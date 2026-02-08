@@ -30,6 +30,15 @@ import { getUserEffectiveRole } from "../../services/neon-member.service.js";
 const VALID_ROLES: BeeLearntRole[] = ["STUDENT", "PARENT", "TUTOR", "ADMIN"];
 const DEFAULT_ROLE: BeeLearntRole = "STUDENT";
 
+// Error codes for missing tables/schemas in neondb — expected when Neon Auth
+// tables haven't been created yet. Return null instead of crashing.
+const NEON_AUTH_MISSING_CODES = new Set(["42P01", "3F000"]);
+
+function isNeonAuthMissingError(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code;
+  return !!code && NEON_AUTH_MISSING_CODES.has(code);
+}
+
 function ensureAuthDb() {
   if (!authDb) {
     throw new Error("Neon Auth database not configured (NEON_AUTH_DATABASE_URL missing)");
@@ -166,6 +175,9 @@ export async function syncUserFromNeonAuth(neonAuthUserId: string, organizationI
       };
     }
   } catch (error) {
+    if (isNeonAuthMissingError(error)) {
+      return null;
+    }
     console.error("[syncUserFromNeonAuth] Error:", error);
     throw error;
   }
@@ -225,6 +237,9 @@ export async function getNeonAuthUser(userId: string, organizationId?: string | 
       role: userRole,
     };
   } catch (error) {
+    if (isNeonAuthMissingError(error)) {
+      return null;
+    }
     console.error("[getNeonAuthUser] Error:", error);
     throw error;
   }
@@ -283,6 +298,10 @@ export async function verifyNeonAuthSession(token: string) {
       },
     };
   } catch (error) {
+    // 42P01 = relation "session" does not exist — neondb tables not created yet
+    if (isNeonAuthMissingError(error)) {
+      return null;
+    }
     console.error("[verifyNeonAuthSession] Error:", error);
     throw error;
   }

@@ -105,14 +105,16 @@ export async function authenticate(
           sessionData.user.id,
           organizationId,
         );
-        req.user = {
-          id: sessionData.user.id,
-          role: syncResult.role,
-          email: sessionData.user.email,
-          name: sessionData.user.name,
-        };
-        next();
-        return;
+        if (syncResult) {
+          req.user = {
+            id: sessionData.user.id,
+            role: syncResult.role,
+            email: sessionData.user.email,
+            name: sessionData.user.name,
+          };
+          next();
+          return;
+        }
       }
     } catch {
       // Fall through to other auth strategies
@@ -135,14 +137,16 @@ export async function authenticate(
               neonUserId,
               organizationId,
             );
-            req.user = {
-              id: neonUser.id,
-              role: syncResult.role,
-              email: neonUser.email,
-              name: neonUser.name,
-            };
-            next();
-            return;
+            if (syncResult) {
+              req.user = {
+                id: neonUser.id,
+                role: syncResult.role,
+                email: neonUser.email,
+                name: neonUser.name,
+              };
+              next();
+              return;
+            }
           }
         }
       }

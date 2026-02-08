@@ -95,14 +95,16 @@ export async function socketAuthMiddleware(
       if (sessionData) {
         const organizationId = sessionData.session.activeOrganizationId ?? null;
         const syncResult = await syncUserFromNeonAuth(sessionData.user.id, organizationId);
-        socket.data.user = {
-          id: sessionData.user.id,
-          role: syncResult.role,
-          email: sessionData.user.email,
-          name: sessionData.user.name,
-        } as SocketUser;
-        next();
-        return;
+        if (syncResult) {
+          socket.data.user = {
+            id: sessionData.user.id,
+            role: syncResult.role,
+            email: sessionData.user.email,
+            name: sessionData.user.name,
+          } as SocketUser;
+          next();
+          return;
+        }
       }
     } catch (error) {
       // Fall through to other auth strategies
@@ -121,14 +123,16 @@ export async function socketAuthMiddleware(
           const neonUser = await getNeonAuthUser(neonUserId, organizationId);
           if (neonUser) {
             const syncResult = await syncUserFromNeonAuth(neonUserId, organizationId);
-            socket.data.user = {
-              id: neonUser.id,
-              role: syncResult.role,
-              email: neonUser.email,
-              name: neonUser.name,
-            } as SocketUser;
-            next();
-            return;
+            if (syncResult) {
+              socket.data.user = {
+                id: neonUser.id,
+                role: syncResult.role,
+                email: neonUser.email,
+                name: neonUser.name,
+              } as SocketUser;
+              next();
+              return;
+            }
           }
         }
       }

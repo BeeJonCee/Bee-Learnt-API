@@ -189,10 +189,14 @@ async function testSchemaSync() {
 
     try {
       const syncResult = await syncUserFromNeonAuth(userId);
-      console.log(`   ✓ Sync successful`);
-      console.log(`      User:      ${syncResult.user.email}`);
-      console.log(`      Role:      ${syncResult.role}`);
-      console.log(`      Is New:    ${syncResult.isNewUser}`);
+      if (syncResult) {
+        console.log(`   ✓ Sync successful`);
+        console.log(`      User:      ${syncResult.user.email}`);
+        console.log(`      Role:      ${syncResult.role}`);
+        console.log(`      Is New:    ${syncResult.isNewUser}`);
+      } else {
+        console.log(`   ⚠ Sync returned null (neondb tables may not exist)`);
+      }
     } catch (error: any) {
       console.error(`   ✗ Sync failed: ${error.message}`);
     }
