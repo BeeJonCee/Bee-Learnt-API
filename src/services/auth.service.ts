@@ -13,7 +13,8 @@ import type { BeeLearntRole } from "../shared/types/auth.js";
 import {
   isNeonAuthAvailable,
   getNeonAuthUserByEmail,
-  syncNeonAuthUserToApp
+  syncNeonAuthUserToApp,
+  authenticateViaNeonAuth
 } from "./neon-auth-sync.js";
 
 type RegisterInput = {
@@ -183,6 +184,11 @@ export async function registerUser(input: RegisterInput) {
 }
 
 export async function loginUser(input: LoginInput) {
+  if (!env.jwtSecret) {
+    throw new HttpError("JWT secret is not configured.", 500);
+  }
+
+  // Look up user in beelearnt database
   const [user] = await db
     .select({
       id: users.id,
@@ -195,47 +201,49 @@ export async function loginUser(input: LoginInput) {
     .innerJoin(roles, eq(users.roleId, roles.id))
     .where(eq(users.email, input.email));
 
-  if (!user?.passwordHash) {
-    throw new HttpError("Invalid email or password.", 401);
+  // Path 1: Local auth — user exists with a passwordHash in beelearnt
+  if (user?.passwordHash) {
+    const valid = await bcrypt.compare(input.password, user.passwordHash);
+    if (!valid) {
+      throw new HttpError("Invalid email or password.", 401);
+    }
+
+    const normalizedRole = user.role.toUpperCase() as BeeLearntRole;
+
+    const token = jwt.sign(
+      { id: user.id, role: normalizedRole, email: user.email, name: user.name },
+      env.jwtSecret,
+      { expiresIn: "7d" }
+    );
+
+    await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
+    console.log(`✓ User logged in (local): ${user.email} (Role: ${normalizedRole})`);
+
+    return {
+      token,
+      user: { id: user.id, name: user.name, email: user.email, role: normalizedRole },
+    };
   }
 
-  const valid = await bcrypt.compare(input.password, user.passwordHash);
-  if (!valid) {
-    throw new HttpError("Invalid email or password.", 401);
+  // Path 2: Neon Auth fallback — check neondb credential account
+  if (isNeonAuthAvailable()) {
+    const neonResult = await authenticateViaNeonAuth(input.email, input.password);
+    if (neonResult) {
+      const token = jwt.sign(
+        { id: neonResult.id, role: neonResult.role, email: neonResult.email, name: neonResult.name },
+        env.jwtSecret,
+        { expiresIn: "7d" }
+      );
+
+      await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, neonResult.id));
+      console.log(`✓ User logged in (Neon Auth): ${neonResult.email} (Role: ${neonResult.role})`);
+
+      return {
+        token,
+        user: { id: neonResult.id, name: neonResult.name, email: neonResult.email, role: neonResult.role },
+      };
+    }
   }
 
-  // Normalize role to uppercase
-  const normalizedRole = user.role.toUpperCase() as BeeLearntRole;
-
-  if (!env.jwtSecret) {
-    throw new HttpError("JWT secret is not configured.", 500);
-  }
-
-  const token = jwt.sign(
-    {
-      id: user.id,
-      role: normalizedRole,
-      email: user.email,
-      name: user.name,
-    },
-    env.jwtSecret,
-    { expiresIn: "7d" }
-  );
-
-  await db
-    .update(users)
-    .set({ lastLoginAt: new Date() })
-    .where(eq(users.id, user.id));
-
-  console.log(`✓ User logged in: ${user.email} (Role: ${normalizedRole})`);
-
-  return {
-    token,
-    user: { 
-      id: user.id, 
-      name: user.name, 
-      email: user.email, 
-      role: normalizedRole 
-    },
-  };
+  throw new HttpError("Invalid email or password.", 401);
 }

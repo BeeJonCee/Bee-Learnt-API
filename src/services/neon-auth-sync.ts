@@ -9,13 +9,14 @@
  * All auth tables are in the public schema of the neondb database.
  */
 
+import bcrypt from "bcryptjs";
 import type { BeeLearntRole } from "../shared/types/auth.js";
 import { env } from "../config/env.js";
 import { db as appDb } from "../core/database/index.js";
 import { db as authDb } from "../core/database/neon-auth-db.js";
-import { neonAuthUsers } from "../core/database/neon-auth-schema.js";
+import { neonAuthUsers, neonAuthAccounts } from "../core/database/neon-auth-schema.js";
 import { roles, users } from "../core/database/schema/index.js";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 const VALID_ROLES: BeeLearntRole[] = ["STUDENT", "PARENT", "TUTOR", "ADMIN"];
 const DEFAULT_ROLE: BeeLearntRole = "STUDENT";
@@ -190,6 +191,63 @@ export async function getNeonAuthUserByEmail(email: string) {
   } catch (error) {
     if (!shouldIgnoreNeonAuthError(error)) {
       console.error("[getNeonAuthUserByEmail] Error:", error);
+    }
+    return null;
+  }
+}
+
+/**
+ * Authenticate user via Neon Auth credential account.
+ * Checks neondb.account table for a "credential" provider entry
+ * and compares the password hash stored there.
+ * On success, syncs the user to beelearnt and returns user data.
+ */
+export async function authenticateViaNeonAuth(email: string, password: string) {
+  if (!isNeonAuthAvailable() || !authDb) return null;
+
+  try {
+    // Find user by email in neondb
+    const neonUsersResult = await authDb
+      .select({
+        id: neonAuthUsers.id,
+        email: neonAuthUsers.email,
+        name: neonAuthUsers.name,
+        role: neonAuthUsers.role,
+      })
+      .from(neonAuthUsers)
+      .where(eq(neonAuthUsers.email, email))
+      .limit(1);
+
+    const neonUser = neonUsersResult[0];
+    if (!neonUser) return null;
+
+    // Find credential account for this user
+    const accountsResult = await authDb
+      .select({ password: neonAuthAccounts.password })
+      .from(neonAuthAccounts)
+      .where(
+        and(
+          eq(neonAuthAccounts.userId, neonUser.id),
+          eq(neonAuthAccounts.providerId, "credential")
+        )
+      )
+      .limit(1);
+
+    const account = accountsResult[0];
+    if (!account?.password) return null;
+
+    // Compare password against the hash stored in neondb.account
+    const valid = await bcrypt.compare(password, account.password);
+    if (!valid) return null;
+
+    console.log(`✓ Neon Auth credential login successful: ${email}`);
+
+    // Sync user from neondb to beelearnt
+    const syncResult = await syncNeonAuthUserToApp(neonUser.id);
+    return syncResult;
+  } catch (error: any) {
+    if (!shouldIgnoreNeonAuthError(error)) {
+      console.error("[authenticateViaNeonAuth] Error:", error.message);
     }
     return null;
   }
