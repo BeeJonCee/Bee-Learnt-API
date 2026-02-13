@@ -70,7 +70,7 @@ authRoutes.post("/social-bridge", socialBridge);
  * @swagger
  * /api/auth/exchange-neon-token:
  *   post:
- *     summary: Exchange Neon Auth session token for backend JWT (primary auth path)
+ *     summary: Exchange Neon Auth token for backend JWT
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -81,7 +81,7 @@ authRoutes.post("/social-bridge", socialBridge);
  *             properties:
  *               sessionToken:
  *                 type: string
- *                 description: Neon Auth session token from __session cookie
+ *                 description: Neon Auth session token (cookie token) or Neon JWT access token
  *     responses:
  *       200:
  *         description: Token exchange successful

@@ -26,8 +26,24 @@ type LoginInput = {
   password: string;
 };
 
+const AUTH_SERVICE_LOG_NS = "[auth-service]";
+
+function maskEmail(email: string) {
+  const parts = email.split("@");
+  if (parts.length !== 2) return "***";
+  const [local, domain] = parts;
+  if (local.length <= 2) return `***@${domain}`;
+  return `${local.slice(0, 2)}***@${domain}`;
+}
+
 export async function loginUser(input: LoginInput) {
+  const maskedEmail = maskEmail(input.email);
+  console.info(`${AUTH_SERVICE_LOG_NS} login:start`, { email: maskedEmail });
+
   if (!env.jwtSecret) {
+    console.error(`${AUTH_SERVICE_LOG_NS} login:missing-jwt-secret`, {
+      email: maskedEmail,
+    });
     throw new HttpError("JWT secret is not configured.", 500);
   }
 
@@ -44,10 +60,14 @@ export async function loginUser(input: LoginInput) {
     .innerJoin(roles, eq(users.roleId, roles.id))
     .where(eq(users.email, input.email));
 
-  // Path 1: Local auth — user exists with a passwordHash in beelearnt
+  // Path 1: Local auth - user exists with a passwordHash in beelearnt
   if (user?.passwordHash) {
     const valid = await bcrypt.compare(input.password, user.passwordHash);
     if (!valid) {
+      console.warn(`${AUTH_SERVICE_LOG_NS} login:local-password-mismatch`, {
+        email: maskedEmail,
+        userId: user.id,
+      });
       throw new HttpError("Invalid email or password.", 401);
     }
 
@@ -59,8 +79,16 @@ export async function loginUser(input: LoginInput) {
       { expiresIn: "7d" },
     );
 
-    await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
-    console.log(`✓ User logged in (local): ${user.email} (Role: ${normalizedRole})`);
+    await db
+      .update(users)
+      .set({ lastLoginAt: new Date() })
+      .where(eq(users.id, user.id));
+
+    console.info(`${AUTH_SERVICE_LOG_NS} login:local-success`, {
+      email: maskedEmail,
+      userId: user.id,
+      role: normalizedRole,
+    });
 
     return {
       token,
@@ -68,25 +96,56 @@ export async function loginUser(input: LoginInput) {
     };
   }
 
-  // Path 2: Neon Auth fallback — check neondb.neon_auth.account for credential provider
+  // Path 2: Neon Auth fallback - check neondb.neon_auth.account for credential provider
   if (isNeonAuthAvailable()) {
+    console.info(`${AUTH_SERVICE_LOG_NS} login:neon-fallback:start`, {
+      email: maskedEmail,
+    });
+
     const neonResult = await authenticateViaNeonAuth(input.email, input.password);
     if (neonResult) {
       const token = jwt.sign(
-        { id: neonResult.id, role: neonResult.role, email: neonResult.email, name: neonResult.name },
+        {
+          id: neonResult.id,
+          role: neonResult.role,
+          email: neonResult.email,
+          name: neonResult.name,
+        },
         env.jwtSecret,
         { expiresIn: "7d" },
       );
 
-      await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, neonResult.id));
-      console.log(`✓ User logged in (Neon Auth): ${neonResult.email} (Role: ${neonResult.role})`);
+      await db
+        .update(users)
+        .set({ lastLoginAt: new Date() })
+        .where(eq(users.id, neonResult.id));
+
+      console.info(`${AUTH_SERVICE_LOG_NS} login:neon-fallback:success`, {
+        email: maskedEmail,
+        userId: neonResult.id,
+        role: neonResult.role,
+      });
 
       return {
         token,
-        user: { id: neonResult.id, name: neonResult.name, email: neonResult.email, role: neonResult.role },
+        user: {
+          id: neonResult.id,
+          name: neonResult.name,
+          email: neonResult.email,
+          role: neonResult.role,
+        },
       };
     }
+
+    console.warn(`${AUTH_SERVICE_LOG_NS} login:neon-fallback:failed`, {
+      email: maskedEmail,
+    });
+  } else {
+    console.warn(`${AUTH_SERVICE_LOG_NS} login:neon-unavailable`, {
+      email: maskedEmail,
+    });
   }
 
+  console.warn(`${AUTH_SERVICE_LOG_NS} login:failed`, { email: maskedEmail });
   throw new HttpError("Invalid email or password.", 401);
 }
