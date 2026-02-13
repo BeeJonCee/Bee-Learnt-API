@@ -157,17 +157,21 @@ export async function syncPasswordToNeonAuth(input: SyncPasswordInput): Promise<
   }
 
   try {
-    // Check if account already exists
+    // Check if credential/email account already exists
     const [existing] = await authDb
       .select({ id: neonAuthAccounts.id })
       .from(neonAuthAccounts)
-      .where(eq(neonAuthAccounts.userId, input.userId))
+      .where(
+        sql`${neonAuthAccounts.userId} = ${input.userId} AND ${neonAuthAccounts.providerId} IN ('credential', 'email')`,
+      )
       .limit(1);
 
     if (existing) {
       await authDb
         .update(neonAuthAccounts)
         .set({
+          providerId: "credential",
+          accountId: input.email,
           password: input.passwordHash,
           updatedAt: new Date(),
         })
@@ -176,7 +180,7 @@ export async function syncPasswordToNeonAuth(input: SyncPasswordInput): Promise<
       await authDb.insert(neonAuthAccounts).values({
         id: sql`gen_random_uuid()`.mapWith(String) as any,
         userId: input.userId,
-        providerId: "email",
+        providerId: "credential",
         accountId: input.email,
         password: input.passwordHash,
         createdAt: new Date(),
@@ -227,7 +231,9 @@ export async function getNeonAuthPassword(userId: string): Promise<string | null
     const [account] = await authDb
       .select({ password: neonAuthAccounts.password })
       .from(neonAuthAccounts)
-      .where(eq(neonAuthAccounts.userId, userId))
+      .where(
+        sql`${neonAuthAccounts.userId} = ${userId} AND ${neonAuthAccounts.providerId} IN ('credential', 'email')`,
+      )
       .limit(1);
 
     return account?.password || null;

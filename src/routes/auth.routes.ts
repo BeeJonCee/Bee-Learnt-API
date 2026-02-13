@@ -1,8 +1,14 @@
 import { Router } from "express";
-import { login, me, socialBridge, exchangeNeonToken } from "../controllers/auth.controller.js";
+import {
+  login,
+  me,
+  socialBridge,
+  exchangeNeonToken,
+  register,
+} from "../controllers/auth.controller.js";
 import { requireAuth } from "../core/middleware/auth.js";
 import { validateBody } from "../core/middleware/validate.js";
-import { loginSchema } from "../shared/validators/index.js";
+import { loginSchema, registerSchema } from "../shared/validators/index.js";
 
 const authRoutes = Router();
 
@@ -40,6 +46,7 @@ const authRoutes = Router();
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 authRoutes.post("/login", validateBody(loginSchema), login);
+authRoutes.post("/register", validateBody(registerSchema), register);
 
 /**
  * @swagger

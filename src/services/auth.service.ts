@@ -5,12 +5,14 @@
  * This service handles legacy email/password login (for existing local users)
  * and Neon Auth credential login as a fallback.
  *
- * Registration and email verification are handled by Neon Auth SDK on the frontend.
+ * Registration is primarily handled by Neon Auth SDK on the frontend.
+ * A local register fallback is also supported when Neon Auth endpoints are unavailable.
  */
 
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { eq } from "drizzle-orm";
+import { randomUUID } from "crypto";
 import { db } from "../core/database/index.js";
 import { roles, users } from "../core/database/schema/index.js";
 import { env } from "../config/env.js";
@@ -20,10 +22,21 @@ import {
   isNeonAuthAvailable,
   authenticateViaNeonAuth,
 } from "./neon-auth-sync.js";
+import {
+  syncPasswordToNeonAuth,
+  syncToNeonAuthUser,
+} from "../shared/utils/schema-sync.js";
 
 type LoginInput = {
   email: string;
   password: string;
+};
+
+type RegisterInput = {
+  name: string;
+  email: string;
+  password: string;
+  role: BeeLearntRole;
 };
 
 const AUTH_SERVICE_LOG_NS = "[auth-service]";
@@ -34,6 +47,123 @@ function maskEmail(email: string) {
   const [local, domain] = parts;
   if (local.length <= 2) return `***@${domain}`;
   return `${local.slice(0, 2)}***@${domain}`;
+}
+
+function normalizeRole(role: string): BeeLearntRole {
+  return role.toUpperCase() as BeeLearntRole;
+}
+
+const NEON_AUTH_OPTIONAL_MISSING_CODES = new Set(["42P01", "3F000"]);
+
+function isNeonOptionalSyncError(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code;
+  return !!code && NEON_AUTH_OPTIONAL_MISSING_CODES.has(code);
+}
+
+export async function registerUser(input: RegisterInput) {
+  const normalizedEmail = input.email.trim().toLowerCase();
+  const normalizedRole = normalizeRole(input.role);
+  const maskedEmail = maskEmail(normalizedEmail);
+
+  console.info(`${AUTH_SERVICE_LOG_NS} register:start`, {
+    email: maskedEmail,
+    role: normalizedRole,
+  });
+
+  const [existingUser] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, normalizedEmail))
+    .limit(1);
+
+  if (existingUser) {
+    console.warn(`${AUTH_SERVICE_LOG_NS} register:email-exists`, {
+      email: maskedEmail,
+      existingUserId: existingUser.id,
+    });
+    throw new HttpError("Email already in use.", 409);
+  }
+
+  const [roleRow] = await db
+    .select({ id: roles.id, name: roles.name })
+    .from(roles)
+    .where(eq(roles.name, normalizedRole))
+    .limit(1);
+
+  if (!roleRow) {
+    console.warn(`${AUTH_SERVICE_LOG_NS} register:role-not-found`, {
+      email: maskedEmail,
+      role: normalizedRole,
+    });
+    throw new HttpError("Role not found.", 400);
+  }
+
+  const userId = randomUUID();
+  const passwordHash = await bcrypt.hash(input.password, 10);
+
+  const [createdUser] = await db
+    .insert(users)
+    .values({
+      id: userId,
+      name: input.name.trim(),
+      email: normalizedEmail,
+      passwordHash,
+      roleId: roleRow.id,
+    })
+    .returning({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+    });
+
+  // Keep local registration independent from Neon Auth availability.
+  try {
+    await syncToNeonAuthUser({
+      id: userId,
+      name: createdUser.name,
+      email: createdUser.email,
+      role: normalizedRole,
+      image: null,
+    });
+
+    await syncPasswordToNeonAuth({
+      userId,
+      email: createdUser.email,
+      passwordHash,
+    });
+
+    console.info(`${AUTH_SERVICE_LOG_NS} register:neon-sync:success`, {
+      email: maskedEmail,
+      userId,
+    });
+  } catch (error) {
+    if (isNeonOptionalSyncError(error)) {
+      console.warn(`${AUTH_SERVICE_LOG_NS} register:neon-sync:skipped`, {
+        email: maskedEmail,
+        userId,
+        reason: "Neon Auth tables/configuration unavailable",
+      });
+    } else {
+      console.warn(`${AUTH_SERVICE_LOG_NS} register:neon-sync:error`, {
+        email: maskedEmail,
+        userId,
+        message: error instanceof Error ? error.message : "Unknown sync error",
+      });
+    }
+  }
+
+  console.info(`${AUTH_SERVICE_LOG_NS} register:success`, {
+    email: maskedEmail,
+    userId,
+    role: normalizedRole,
+  });
+
+  return {
+    id: createdUser.id,
+    name: createdUser.name,
+    email: createdUser.email,
+    role: normalizedRole,
+  };
 }
 
 export async function loginUser(input: LoginInput) {

@@ -22,7 +22,7 @@
  */
 
 import bcrypt from "bcryptjs";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db as appDb } from "../core/database/index.js";
 import { db as authDb } from "../core/database/neon-auth-db.js";
 import { users, roles } from "../core/database/schema/index.js";
@@ -416,14 +416,14 @@ export async function authenticateViaNeonAuth(email: string, password: string) {
 
     if (!neonUser) return null;
 
-    // Find credential account for this user
+    // Find credential-style account for this user (supports legacy providerId="email")
     const [account] = await authDb
       .select({ password: neonAuthAccounts.password })
       .from(neonAuthAccounts)
       .where(
         and(
           eq(neonAuthAccounts.userId, neonUser.id),
-          eq(neonAuthAccounts.providerId, "credential"),
+          sql`${neonAuthAccounts.providerId} IN ('credential', 'email')`,
         ),
       )
       .limit(1);

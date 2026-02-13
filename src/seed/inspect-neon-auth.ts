@@ -2,170 +2,135 @@ import "dotenv/config";
 import { sql } from "drizzle-orm";
 import { db as authDb } from "../core/database/neon-auth-db.js";
 
-/**
- * Script to inspect Neon Auth (neondb) database tables and their data.
- *
- * Neon Auth tables live in the public schema of a separate "neondb" database,
- * NOT in a "neon_auth" schema of the app database. We connect via authDb.
- */
+async function tableExists(tableName: string) {
+  if (!authDb) return false;
+
+  const result = await authDb.execute<{ exists: boolean }>(sql`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.tables
+      WHERE table_schema = 'neon_auth'
+        AND table_name = ${tableName}
+    ) AS exists
+  `);
+
+  return Boolean(result.rows[0]?.exists);
+}
 
 async function inspectNeonAuth() {
-  console.log("🔍 Inspecting Neon Auth Database (neondb)\n");
+  console.log("Inspecting Neon Auth database (neondb.neon_auth)");
 
   if (!authDb) {
-    console.log("❌ NEON_AUTH_DATABASE_URL not set. Cannot inspect neon auth database.");
+    console.error("NEON_AUTH_DATABASE_URL is not set.");
     process.exit(1);
   }
 
-  try {
-    // 1. List all tables in neondb public schema
-    console.log("1️⃣  Tables in neondb public schema:");
-    const tables = await authDb.execute(sql`
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema = 'public'
-      ORDER BY table_name;
-    `);
+  const tableRows = await authDb.execute<{ table_name: string }>(sql`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'neon_auth'
+    ORDER BY table_name
+  `);
 
-    for (const table of tables.rows as any[]) {
-      console.log(`   - ${table.table_name}`);
-    }
-    console.log();
+  if (tableRows.rows.length === 0) {
+    console.log("No tables found in neon_auth schema.");
+    return;
+  }
 
-    // 2. Inspect member table structure
-    console.log("2️⃣  member table structure:");
-    const memberColumns = await authDb.execute(sql`
-      SELECT column_name, data_type, is_nullable
-      FROM information_schema.columns
-      WHERE table_schema = 'public' AND table_name = 'member'
-      ORDER BY ordinal_position;
-    `);
+  console.log("\nTables:");
+  for (const row of tableRows.rows) {
+    console.log(`  - ${row.table_name}`);
+  }
 
-    if (memberColumns.rows.length === 0) {
-      console.log("   ℹ️  member table not found\n");
-    } else {
-      console.log("   Columns:");
-      for (const col of memberColumns.rows as any[]) {
-        console.log(`   - ${col.column_name} (${col.data_type}) ${col.is_nullable === 'YES' ? 'NULL' : 'NOT NULL'}`);
-      }
-      console.log();
-    }
+  const users = await authDb.execute<{
+    id: string;
+    email: string;
+    name: string | null;
+    role: string | null;
+    emailVerified: boolean;
+    banned: boolean;
+    createdAt: Date;
+  }>(sql`
+    SELECT
+      id::text,
+      email,
+      name,
+      role,
+      "emailVerified",
+      banned,
+      "createdAt"
+    FROM neon_auth."user"
+    ORDER BY "createdAt" DESC
+    LIMIT 10
+  `);
 
-    // 3. Check member data
-    console.log("3️⃣  Data in member table:");
-    const members = await authDb.execute(sql`
-      SELECT m.*, u.email, u.name, o.name as org_name
-      FROM member m
-      LEFT JOIN "user" u ON m."userId" = u.id
-      LEFT JOIN organization o ON m."organizationId" = o.id
+  console.log(`\nLatest users (${users.rows.length}):`);
+  for (const user of users.rows) {
+    console.log(
+      `  - ${user.email} id=${user.id} role=${user.role ?? "null"} verified=${user.emailVerified} banned=${user.banned}`,
+    );
+  }
+
+  const accounts = await authDb.execute<{
+    id: string;
+    userId: string;
+    providerId: string;
+    accountId: string;
+    email: string | null;
+  }>(sql`
+    SELECT
+      a.id::text,
+      a."userId"::text AS "userId",
+      a."providerId",
+      a."accountId",
+      u.email
+    FROM neon_auth.account a
+    LEFT JOIN neon_auth."user" u ON a."userId" = u.id
+    ORDER BY a."createdAt" DESC
+    LIMIT 10
+  `);
+
+  console.log(`\nLatest accounts (${accounts.rows.length}):`);
+  for (const account of accounts.rows) {
+    console.log(
+      `  - provider=${account.providerId} user=${account.email ?? "unknown"} accountId=${account.accountId}`,
+    );
+  }
+
+  if (await tableExists("member")) {
+    const members = await authDb.execute<{
+      id: string;
+      userId: string;
+      organizationId: string;
+      role: string;
+      email: string | null;
+    }>(sql`
+      SELECT
+        m.id::text,
+        m."userId"::text AS "userId",
+        m."organizationId"::text AS "organizationId",
+        m.role,
+        u.email
+      FROM neon_auth.member m
+      LEFT JOIN neon_auth."user" u ON m."userId" = u.id
       ORDER BY m."createdAt" DESC
-      LIMIT 10;
+      LIMIT 10
     `);
 
-    if (members.rows.length === 0) {
-      console.log("   ℹ️  No members found\n");
-    } else {
-      console.log(`   Found ${members.rows.length} members:\n`);
-      for (const member of members.rows as any[]) {
-        console.log(`   Member ID: ${member.id}`);
-        console.log(`   User: ${member.name || 'N/A'} (${member.email || 'N/A'})`);
-        console.log(`   Organization: ${member.org_name || 'N/A'} (${member.organizationId})`);
-        console.log(`   Role: ${member.role}`);
-        console.log(`   Created: ${member.createdAt}`);
-        console.log();
-      }
+    console.log(`\nLatest members (${members.rows.length}):`);
+    for (const member of members.rows) {
+      console.log(
+        `  - user=${member.email ?? member.userId} org=${member.organizationId} role=${member.role}`,
+      );
     }
-
-    // 4. Check user table
-    console.log("4️⃣  Data in user table:");
-    const users = await authDb.execute(sql`
-      SELECT id, email, name, role, "emailVerified", banned, "createdAt"
-      FROM "user"
-      ORDER BY "createdAt" DESC
-      LIMIT 10;
-    `);
-
-    if (users.rows.length === 0) {
-      console.log("   ℹ️  No users found\n");
-    } else {
-      console.log(`   Found ${users.rows.length} users:\n`);
-      for (const user of users.rows as any[]) {
-        console.log(`   User ID: ${user.id}`);
-        console.log(`   Email: ${user.email}`);
-        console.log(`   Name: ${user.name || 'N/A'}`);
-        console.log(`   Role: ${user.role || 'N/A'}`);
-        console.log(`   Email Verified: ${user.emailVerified}`);
-        console.log(`   Banned: ${user.banned}`);
-        console.log(`   Created: ${user.createdAt}`);
-        console.log();
-      }
-    }
-
-    // 5. Check organization table
-    console.log("5️⃣  Data in organization table:");
-    const orgs = await authDb.execute(sql`
-      SELECT id, name, slug, logo, "createdAt"
-      FROM organization
-      ORDER BY "createdAt" DESC
-      LIMIT 10;
-    `);
-
-    if (orgs.rows.length === 0) {
-      console.log("   ℹ️  No organizations found\n");
-    } else {
-      console.log(`   Found ${orgs.rows.length} organizations:\n`);
-      for (const org of orgs.rows as any[]) {
-        console.log(`   Org ID: ${org.id}`);
-        console.log(`   Name: ${org.name}`);
-        console.log(`   Slug: ${org.slug}`);
-        console.log(`   Created: ${org.createdAt}`);
-        console.log();
-      }
-    }
-
-    // 6. Check account table
-    console.log("6️⃣  Data in account table:");
-    const accounts = await authDb.execute(sql`
-      SELECT a.id, a."userId", a."providerId", a."accountId", u.email
-      FROM account a
-      LEFT JOIN "user" u ON a."userId" = u.id
-      ORDER BY a."createdAt" DESC
-      LIMIT 10;
-    `);
-
-    if (accounts.rows.length === 0) {
-      console.log("   ℹ️  No accounts found\n");
-    } else {
-      console.log(`   Found ${accounts.rows.length} accounts:\n`);
-      for (const acc of accounts.rows as any[]) {
-        console.log(`   Account ID: ${acc.id}`);
-        console.log(`   User Email: ${acc.email || 'N/A'}`);
-        console.log(`   Provider: ${acc.providerId}`);
-        console.log(`   Account ID: ${acc.accountId}`);
-        console.log();
-      }
-    }
-
-    // Summary
-    console.log("📊 Summary:");
-    console.log(`   Users: ${users.rows.length}`);
-    console.log(`   Members: ${members.rows.length}`);
-    console.log(`   Organizations: ${orgs.rows.length}`);
-    console.log(`   Accounts: ${accounts.rows.length}`);
-    console.log();
-
-  } catch (error) {
-    console.error("❌ Error inspecting neondb:", error);
-    throw error;
+  } else {
+    console.log("\nmember table not found in neon_auth schema.");
   }
 }
 
 inspectNeonAuth()
-  .then(() => {
-    console.log("✅ Inspection completed");
-    process.exit(0);
-  })
+  .then(() => process.exit(0))
   .catch((error) => {
-    console.error("❌ Inspection failed:", error);
+    console.error("Inspection failed:", error);
     process.exit(1);
   });

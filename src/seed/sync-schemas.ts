@@ -1,17 +1,3 @@
-/**
- * Schema Sync and Verification Script
- *
- * Run this to verify both databases are accessible and sync users:
- * 1. Verify authDb (neondb) and appDb (beelearnt) are connected
- * 2. Display current stats from both databases
- * 3. Check for inconsistencies
- * 4. Sync users if needed
- *
- * Architecture:
- * - beelearnt DB (appDb/db): public.users, public.roles, etc.
- * - neondb DB (authDb): public.user, public.account, public.member, etc.
- */
-
 import "dotenv/config";
 import { sql } from "drizzle-orm";
 import { db } from "../core/database/index.js";
@@ -21,171 +7,148 @@ import {
   verifySchemaConsistency,
 } from "../shared/utils/schema-sync.js";
 
-async function checkDatabases(): Promise<boolean> {
-  console.log("🔍 Checking database connections...\n");
+async function tableExistsInSchema(database: any, schema: string, tableName: string) {
+  const result = await database.execute(sql`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.tables
+      WHERE table_schema = ${schema}
+        AND table_name = ${tableName}
+    ) AS exists
+  `);
 
-  // Check beelearnt (appDb)
+  const rows = result.rows as Array<{ exists?: boolean }>;
+  return Boolean(rows[0]?.exists);
+}
+
+async function checkDatabases(): Promise<boolean> {
+  console.log("Checking database connections...");
+
   try {
     await db.execute(sql`SELECT 1`);
-    console.log("✅ beelearnt database (appDb) connected");
+    console.log("  OK beelearnt database connected");
   } catch (error) {
-    console.log("❌ beelearnt database (appDb) connection failed!");
+    console.error("  FAIL beelearnt database connection failed");
     return false;
   }
 
-  // Check neondb (authDb)
   if (!authDb) {
-    console.log("❌ neondb (authDb) not configured! Set NEON_AUTH_DATABASE_URL.");
+    console.error("  FAIL Neon Auth database is not configured");
     return false;
   }
 
   try {
     await authDb.execute(sql`SELECT 1`);
-    console.log("✅ neondb (authDb) connected");
+    console.log("  OK Neon Auth database connected");
   } catch (error) {
-    console.log("❌ neondb (authDb) connection failed!");
+    console.error("  FAIL Neon Auth database connection failed");
     return false;
   }
 
-  // Check required tables in beelearnt
-  const beelearntTables = ["users", "roles"];
-  for (const table of beelearntTables) {
-    const exists = await db.execute(sql`
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema = 'public' AND table_name = ${table}
-    `);
-
-    if (exists.rows.length === 0) {
-      console.log(`❌ beelearnt.${table} table doesn't exist!`);
+  const appTables = ["users", "roles"];
+  for (const table of appTables) {
+    const exists = await tableExistsInSchema(db, "public", table);
+    if (!exists) {
+      console.error(`  FAIL Missing beelearnt.public.${table}`);
       return false;
     }
-    console.log(`✅ beelearnt.${table} exists`);
+    console.log(`  OK beelearnt.public.${table}`);
   }
 
-  // Check required tables in neondb
-  const neondbTables = ["user", "account", "member"];
-  for (const table of neondbTables) {
-    const exists = await authDb.execute(sql`
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema = 'public' AND table_name = ${table}
-    `);
-
-    if (exists.rows.length === 0) {
-      console.log(`❌ neondb.${table} table doesn't exist!`);
+  const authTables = ["user", "account"];
+  for (const table of authTables) {
+    const exists = await tableExistsInSchema(authDb, "neon_auth", table);
+    if (!exists) {
+      console.error(`  FAIL Missing neondb.neon_auth.${table}`);
       return false;
     }
-    console.log(`✅ neondb.${table} exists`);
+    console.log(`  OK neondb.neon_auth.${table}`);
   }
+
+  const memberExists = await tableExistsInSchema(authDb, "neon_auth", "member");
+  console.log(
+    memberExists
+      ? "  OK neondb.neon_auth.member"
+      : "  WARN neondb.neon_auth.member not found (organization features disabled)",
+  );
 
   return true;
 }
 
 async function displayStats() {
-  console.log("\n📊 Database Statistics\n");
+  const appUsersCount = await db.execute<{ count: string }>(
+    sql`SELECT COUNT(*)::text AS count FROM users`,
+  );
+  const appCount = appUsersCount.rows[0]?.count ?? "0";
+  console.log(`beelearnt.public.users:           ${appCount}`);
 
-  // Count users in beelearnt
-  const publicUsersCount = await db.execute(sql`SELECT COUNT(*)::text as count FROM users`);
-  console.log(`beelearnt.users:           ${(publicUsersCount.rows[0] as any).count}`);
+  if (!authDb) return;
 
-  if (authDb) {
-    // Count records in neondb
-    const neonUsersCount = await authDb.execute(sql`SELECT COUNT(*)::text as count FROM "user"`);
-    const neonAccountsCount = await authDb.execute(sql`SELECT COUNT(*)::text as count FROM account WHERE password IS NOT NULL`);
-    const neonMembersCount = await authDb.execute(sql`SELECT COUNT(*)::text as count FROM member`);
-
-    console.log(`neondb.user:               ${(neonUsersCount.rows[0] as any).count}`);
-    console.log(`neondb.account (w/ pwd):   ${(neonAccountsCount.rows[0] as any).count}`);
-    console.log(`neondb.member:             ${(neonMembersCount.rows[0] as any).count}`);
-  }
-
-  // Show role distribution
-  console.log("\n📈 Role Distribution:\n");
-  const roleStats = await db.execute(sql`
-    SELECT r.name, COUNT(u.id)::text as count
-    FROM roles r
-    LEFT JOIN users u ON u.role_id = r.id
-    GROUP BY r.name
-    ORDER BY r.name
+  const neonUsersCount = await authDb.execute<{ count: string }>(
+    sql`SELECT COUNT(*)::text AS count FROM neon_auth."user"`,
+  );
+  const neonAccountsCount = await authDb.execute<{ count: string }>(sql`
+    SELECT COUNT(*)::text AS count
+    FROM neon_auth.account
+    WHERE password IS NOT NULL
+      AND "providerId" IN ('credential', 'email')
   `);
 
-  for (const stat of roleStats.rows as any[]) {
-    const emoji = stat.name === "ADMIN" ? "👑" : stat.name === "PARENT" ? "👨‍👩‍👧" : "🎓";
-    console.log(`   ${emoji} ${stat.name.padEnd(10)}: ${stat.count}`);
+  console.log(`neondb.neon_auth.user:            ${neonUsersCount.rows[0]?.count ?? "0"}`);
+  console.log(
+    `neondb.neon_auth.account (pwd):   ${neonAccountsCount.rows[0]?.count ?? "0"}`,
+  );
+
+  try {
+    const neonMembersCount = await authDb.execute<{ count: string }>(
+      sql`SELECT COUNT(*)::text AS count FROM neon_auth.member`,
+    );
+    console.log(`neondb.neon_auth.member:          ${neonMembersCount.rows[0]?.count ?? "0"}`);
+  } catch {
+    console.log("neondb.neon_auth.member:          n/a");
   }
 }
 
 async function main() {
-  console.log("\n🚀 BeeLearnt Schema Sync & Verification\n");
-  console.log("=".repeat(80));
+  console.log("BeeLearnt schema sync");
+  console.log("========================================");
 
-  try {
-    // Step 1: Check databases
-    const dbsOk = await checkDatabases();
-    if (!dbsOk) {
-      console.log("\n❌ Database check failed. Cannot proceed with sync.");
-      process.exit(1);
-    }
-
-    // Step 2: Display current stats
-    await displayStats();
-
-    // Step 3: Verify consistency
-    console.log("\n" + "=".repeat(80));
-    const { consistent, mismatches } = await verifySchemaConsistency();
-
-    if (!consistent) {
-      console.log("\n⚠️  Found inconsistencies. Running sync...\n");
-      console.log("=".repeat(80));
-
-      // Step 4: Sync users
-      const { synced, failed } = await syncAllUsersToNeonAuth();
-
-      console.log("\n" + "=".repeat(80));
-      console.log(`\n✨ Sync Summary:`);
-      console.log(`   ✅ Synced: ${synced}`);
-      console.log(`   ❌ Failed: ${failed}`);
-
-      // Step 5: Verify again
-      console.log("\n" + "=".repeat(80));
-      const finalCheck = await verifySchemaConsistency();
-
-      if (finalCheck.consistent) {
-        console.log("\n🎉 All databases are now consistent!");
-      } else {
-        console.log("\n⚠️  Some inconsistencies remain:");
-        for (const mismatch of finalCheck.mismatches) {
-          console.log(`   - ${mismatch.issue}`);
-        }
-      }
-    }
-
-    // Step 6: Final stats
-    console.log("\n" + "=".repeat(80));
-    await displayStats();
-
-    console.log("\n" + "=".repeat(80));
-    console.log("\n✅ Schema sync complete!");
-    console.log("\n💡 Key Points:");
-    console.log("   • beelearnt.users.id matches neondb.user.id (both uuid)");
-    console.log("   • Passwords stored in both neondb.account and beelearnt.users");
-    console.log("   • Roles synced: neondb.user.role ←→ beelearnt.users.role_id");
-    console.log("   • Member roles take precedence when organizationId present");
-    console.log("   • Email/name/image fields kept in sync\n");
-
-  } catch (error) {
-    console.error("\n❌ Error:", error);
-    throw error;
+  const dbsOk = await checkDatabases();
+  if (!dbsOk) {
+    process.exit(1);
   }
+
+  console.log("\nCurrent stats");
+  await displayStats();
+
+  console.log("\nChecking consistency...");
+  const initial = await verifySchemaConsistency();
+  if (initial.consistent) {
+    console.log("Schema consistency OK");
+    return;
+  }
+
+  console.log(`Found ${initial.mismatches.length} mismatches. Starting sync...`);
+  const result = await syncAllUsersToNeonAuth();
+  console.log(`Sync result: synced=${result.synced} failed=${result.failed}`);
+
+  const finalCheck = await verifySchemaConsistency();
+  if (finalCheck.consistent) {
+    console.log("Schema consistency OK after sync");
+  } else {
+    console.log(`Remaining mismatches: ${finalCheck.mismatches.length}`);
+    for (const mismatch of finalCheck.mismatches) {
+      console.log(`  - ${mismatch.issue}`);
+    }
+  }
+
+  console.log("\nFinal stats");
+  await displayStats();
 }
 
 main()
-  .then(() => {
-    console.log("👋 Done!");
-    process.exit(0);
-  })
-  .catch((err) => {
-    console.error("Failed:", err);
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error("Sync failed:", error);
     process.exit(1);
   });

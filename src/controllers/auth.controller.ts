@@ -2,12 +2,14 @@ import type { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
 import { asyncHandler } from "../core/middleware/async-handler.js";
-import { loginUser } from "../services/auth.service.js";
+import { loginUser, registerUser } from "../services/auth.service.js";
 import {
+  setInitialUserRole,
   syncNeonAuthUserToApp,
   verifyNeonAuthSession,
 } from "../services/neon-auth-sync.js";
 import { verifyNeonToken } from "../shared/utils/neon-auth.js";
+import type { BeeLearntRole } from "../shared/types/auth.js";
 
 const AUTH_API_LOG_NS = "[auth-api]";
 
@@ -31,6 +33,22 @@ const createTraceId = (action: string) =>
 
 const getTraceId = (req: Request, action: string) =>
   extractString(req.header("x-auth-trace-id")) ?? createTraceId(action);
+
+const getRequestMeta = (req: Request) => ({
+  method: req.method,
+  path: req.originalUrl,
+  ip: req.ip,
+});
+
+const SELF_SIGNUP_ROLES: BeeLearntRole[] = ["STUDENT", "PARENT"];
+
+const parseDesiredSignupRole = (value: unknown): BeeLearntRole | null => {
+  const parsed = extractString(value)?.toUpperCase();
+  if (!parsed) return null;
+
+  const role = parsed as BeeLearntRole;
+  return SELF_SIGNUP_ROLES.includes(role) ? role : null;
+};
 
 const extractNeonUserIdFromClaims = (
   payload: Record<string, unknown>,
@@ -98,15 +116,47 @@ const issueBackendJwt = (input: {
   );
 };
 
+export const register = asyncHandler(async (req: Request, res: Response) => {
+  const traceId = getTraceId(req, "register");
+  const requestMeta = getRequestMeta(req);
+  res.setHeader("x-auth-trace-id", traceId);
+
+  const email = extractString((req.body as { email?: unknown })?.email);
+  console.info(`${AUTH_API_LOG_NS} register:start`, {
+    traceId,
+    email: maskEmail(email),
+    ...requestMeta,
+  });
+
+  try {
+    const result = await registerUser(req.body);
+    console.info(`${AUTH_API_LOG_NS} register:success`, {
+      traceId,
+      userId: result.id,
+      role: result.role,
+      ...requestMeta,
+    });
+    res.status(201).json(result);
+  } catch (error) {
+    console.error(`${AUTH_API_LOG_NS} register:error`, {
+      traceId,
+      message: getErrorMessage(error),
+      ...requestMeta,
+    });
+    throw error;
+  }
+});
+
 export const login = asyncHandler(async (req: Request, res: Response) => {
   const traceId = getTraceId(req, "login");
+  const requestMeta = getRequestMeta(req);
   res.setHeader("x-auth-trace-id", traceId);
 
   const email = extractString((req.body as { email?: unknown })?.email);
   console.info(`${AUTH_API_LOG_NS} login:start`, {
     traceId,
     email: maskEmail(email),
-    ip: req.ip,
+    ...requestMeta,
   });
 
   try {
@@ -115,12 +165,14 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
       traceId,
       userId: result.user.id,
       role: result.user.role,
+      ...requestMeta,
     });
     res.json(result);
   } catch (error) {
     console.error(`${AUTH_API_LOG_NS} login:error`, {
       traceId,
       message: getErrorMessage(error),
+      ...requestMeta,
     });
     throw error;
   }
@@ -186,24 +238,47 @@ export const socialBridge = asyncHandler(async (req: Request, res: Response) => 
  */
 export const exchangeNeonToken = asyncHandler(async (req: Request, res: Response) => {
   const traceId = getTraceId(req, "exchange-neon-token");
+  const requestMeta = getRequestMeta(req);
   res.setHeader("x-auth-trace-id", traceId);
 
-  const { sessionToken } = req.body as { sessionToken: string };
+  const { sessionToken, desiredRole } = req.body as {
+    sessionToken: string;
+    desiredRole?: unknown;
+  };
+  const normalizedDesiredRole = parseDesiredSignupRole(desiredRole);
+
+  if (desiredRole !== undefined && !normalizedDesiredRole) {
+    console.warn(`${AUTH_API_LOG_NS} exchange:invalid-desired-role`, {
+      traceId,
+      desiredRole,
+      ...requestMeta,
+    });
+    res.status(400).json({ message: "desiredRole must be STUDENT or PARENT" });
+    return;
+  }
+
   console.info(`${AUTH_API_LOG_NS} exchange:start`, {
     traceId,
     hasSessionToken: Boolean(sessionToken),
     sessionTokenLength: typeof sessionToken === "string" ? sessionToken.length : 0,
-    ip: req.ip,
+    desiredRole: normalizedDesiredRole,
+    ...requestMeta,
   });
 
   if (!sessionToken) {
-    console.warn(`${AUTH_API_LOG_NS} exchange:missing-session-token`, { traceId });
+    console.warn(`${AUTH_API_LOG_NS} exchange:missing-session-token`, {
+      traceId,
+      ...requestMeta,
+    });
     res.status(400).json({ message: "Missing sessionToken" });
     return;
   }
 
   if (!env.jwtSecret) {
-    console.error(`${AUTH_API_LOG_NS} exchange:missing-jwt-secret`, { traceId });
+    console.error(`${AUTH_API_LOG_NS} exchange:missing-jwt-secret`, {
+      traceId,
+      ...requestMeta,
+    });
     res.status(500).json({ message: "JWT secret is not configured" });
     return;
   }
@@ -227,6 +302,7 @@ export const exchangeNeonToken = asyncHandler(async (req: Request, res: Response
     console.warn(`${AUTH_API_LOG_NS} exchange:session-verify-error`, {
       traceId,
       message: getErrorMessage(error),
+      ...requestMeta,
     });
   }
 
@@ -256,14 +332,39 @@ export const exchangeNeonToken = asyncHandler(async (req: Request, res: Response
       console.warn(`${AUTH_API_LOG_NS} exchange:jwt-verify-error`, {
         traceId,
         message: getErrorMessage(error),
+        ...requestMeta,
       });
     }
   }
 
   if (!neonUserId) {
-    console.warn(`${AUTH_API_LOG_NS} exchange:invalid-token`, { traceId });
+    console.warn(`${AUTH_API_LOG_NS} exchange:invalid-token`, {
+      traceId,
+      ...requestMeta,
+    });
     res.status(401).json({ message: "Invalid token" });
     return;
+  }
+
+  if (normalizedDesiredRole) {
+    try {
+      await setInitialUserRole(neonUserId, normalizedDesiredRole);
+      console.info(`${AUTH_API_LOG_NS} exchange:role-applied`, {
+        traceId,
+        neonUserId,
+        desiredRole: normalizedDesiredRole,
+      });
+    } catch (error) {
+      console.error(`${AUTH_API_LOG_NS} exchange:role-apply-failed`, {
+        traceId,
+        neonUserId,
+        desiredRole: normalizedDesiredRole,
+        message: getErrorMessage(error),
+        ...requestMeta,
+      });
+      res.status(400).json({ message: "Failed to apply requested role" });
+      return;
+    }
   }
 
   const syncResult = await syncNeonAuthUserToApp(neonUserId, organizationId);
@@ -272,6 +373,7 @@ export const exchangeNeonToken = asyncHandler(async (req: Request, res: Response
       traceId,
       neonUserId,
       organizationId,
+      ...requestMeta,
     });
     res.status(400).json({ message: "Failed to sync user from Neon Auth" });
     return;
@@ -285,7 +387,10 @@ export const exchangeNeonToken = asyncHandler(async (req: Request, res: Response
   });
 
   if (!token) {
-    console.error(`${AUTH_API_LOG_NS} exchange:jwt-issue-failed`, { traceId });
+    console.error(`${AUTH_API_LOG_NS} exchange:jwt-issue-failed`, {
+      traceId,
+      ...requestMeta,
+    });
     res.status(500).json({ message: "JWT secret is not configured" });
     return;
   }
@@ -294,6 +399,7 @@ export const exchangeNeonToken = asyncHandler(async (req: Request, res: Response
     traceId,
     userId: syncResult.id,
     role: syncResult.role,
+    ...requestMeta,
   });
 
   res.json({

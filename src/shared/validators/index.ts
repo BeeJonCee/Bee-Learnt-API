@@ -178,7 +178,7 @@ export const registerSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
   password: z.string().min(6),
-  role: z.enum(["STUDENT", "PARENT", "ADMIN"]).default("STUDENT"),
+  role: z.enum(["STUDENT", "PARENT"]).default("STUDENT"),
 });
 
 export const announcementCreateSchema = z.object({
