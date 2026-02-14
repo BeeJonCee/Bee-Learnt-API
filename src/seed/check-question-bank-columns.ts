@@ -6,9 +6,10 @@ async function checkColumns() {
   console.log("Checking question_bank_items columns...");
   
   const result = await db.execute(sql`
-    SELECT column_name, data_type, is_nullable
+    SELECT table_schema, column_name, data_type, is_nullable
     FROM information_schema.columns
-    WHERE table_name = 'question_bank_items'
+    WHERE table_schema = 'public'
+      AND table_name = 'question_bank_items'
     ORDER BY ordinal_position;
   `);
 

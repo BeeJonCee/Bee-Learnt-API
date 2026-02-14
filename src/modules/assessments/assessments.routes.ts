@@ -105,7 +105,7 @@ assessmentsRoutes.post(
  * @swagger
  * /api/assessments/{id}/start:
  *   post:
- *     summary: Start an assessment attempt (Student only)
+ *     summary: Start an assessment attempt (Student/Admin)
  *     tags: [Assessments]
  *     security:
  *       - BearerAuth: []
@@ -122,7 +122,7 @@ assessmentsRoutes.post(
 assessmentsRoutes.post(
   "/:id/start",
   requireAuth,
-  requireRole(["STUDENT"]),
+  requireRole(["STUDENT", "ADMIN"]),
   start
 );
 

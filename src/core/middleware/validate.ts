@@ -20,7 +20,8 @@ export function validateQuery(schema: ZodSchema) {
       res.status(400).json({ message: "Invalid query", issues: parsed.error.issues });
       return;
     }
-    req.query = parsed.data;
+    // Express 5 exposes req.query via a getter-only property, so reassigning it throws.
+    // We keep validation behavior without mutating the request object.
     next();
   };
 }

@@ -13,6 +13,11 @@ import { db } from "../core/database/index.js";
 import { quizQuestions } from "../core/database/schema/index.js";
 import { eq, and } from "drizzle-orm";
 
+function toPercentage(score: number, maxScore: number) {
+  if (!Number.isFinite(maxScore) || maxScore <= 0) return 0;
+  return Math.round((score / maxScore) * 100);
+}
+
 export const list = asyncHandler(async (req: Request, res: Response) => {
   const parsed = quizQuerySchema.safeParse({
     moduleId: req.query.moduleId ? Number(req.query.moduleId) : undefined,
@@ -128,8 +133,8 @@ export const getQuizAttempts = asyncHandler(async (req: Request, res: Response) 
   const userId = studentId ? String(studentId) : req.user.id;
 
   // Check if user has access (handled by guard middleware in routes)
-  const { quizAttempts, quizzes } = await import("../core/database/schema/index.js");
-  const { getAccessibleStudentIds } = await import("../lib/rbac/guard");
+  const { quizAttempts } = await import("../core/database/schema/index.js");
+  const { getAccessibleStudentIds } = await import("../lib/rbac/guard.js");
 
   const accessibleIds = await getAccessibleStudentIds(req.user.id, req.user.role);
   if (!accessibleIds.includes(userId)) {
@@ -178,7 +183,7 @@ export const getQuizAttempts = asyncHandler(async (req: Request, res: Response) 
       id: attempt.id,
       score: attempt.score,
       maxScore: attempt.maxScore,
-      percentage: Math.round((attempt.score / attempt.maxScore) * 100),
+      percentage: toPercentage(attempt.score, attempt.maxScore),
       createdAt: attempt.createdAt,
       answers: showCorrectAnswers ? (attempt as any).answers : undefined,
     })),
@@ -200,7 +205,7 @@ export const getStudentQuizResults = asyncHandler(async (req: Request, res: Resp
   }
 
   const { quizAttempts } = await import("../core/database/schema/index.js");
-  const { getAccessibleStudentIds } = await import("../lib/rbac/guard");
+  const { getAccessibleStudentIds } = await import("../lib/rbac/guard.js");
 
   // Check access
   const accessibleIds = await getAccessibleStudentIds(req.user.id, req.user.role);
@@ -242,7 +247,7 @@ export const getStudentQuizResults = asyncHandler(async (req: Request, res: Resp
       difficulty: attempt.quiz.difficulty,
       score: attempt.score,
       maxScore: attempt.maxScore,
-      percentage: Math.round((attempt.score / attempt.maxScore) * 100),
+      percentage: toPercentage(attempt.score, attempt.maxScore),
       createdAt: attempt.createdAt,
       showCorrectAnswers,
       answers: showCorrectAnswers ? (attempt as any).answers : undefined,
@@ -311,7 +316,7 @@ export const updateQuizVisibility = asyncHandler(async (req: Request, res: Respo
     .returning();
 
   // Log audit
-  const { logAudit } = await import("../lib/audit/auditLog");
+  const { logAudit } = await import("../lib/audit/auditLog.js");
   await logAudit({
     actorId: req.user.id,
     action: "quiz.visibility_update",

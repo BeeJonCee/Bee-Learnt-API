@@ -89,12 +89,13 @@ export async function getSystemHealth() {
 }
 
 export async function getReportStats(range: "7d" | "30d" | "90d" | "all" = "7d") {
-  const rangeMap = {
-    "7d": "7 days",
-    "30d": "30 days",
-    "90d": "90 days",
-    all: "1 year",
+  const daysByRange: Record<typeof range, number> = {
+    "7d": 7,
+    "30d": 30,
+    "90d": 90,
+    all: 365,
   };
+  const cutoffDate = new Date(Date.now() - daysByRange[range] * 24 * 60 * 60 * 1000);
 
   try {
     // Get user stats
@@ -107,14 +108,14 @@ export async function getReportStats(range: "7d" | "30d" | "90d" | "all" = "7d")
         SELECT
           COUNT(DISTINCT u.id) as total_users,
           COUNT(DISTINCT CASE 
-            WHEN p.created_at::DATE = CURRENT_DATE THEN u.id 
+            WHEN COALESCE(p.last_accessed_at, p.updated_at)::DATE = CURRENT_DATE THEN u.id 
           END) as active_today,
           COUNT(DISTINCT CASE 
-            WHEN p.created_at >= CURRENT_DATE - INTERVAL '7 days' THEN u.id 
+            WHEN COALESCE(p.last_accessed_at, p.updated_at) >= CURRENT_DATE - INTERVAL '7 days' THEN u.id 
           END) as active_this_week
         FROM users u
         LEFT JOIN progress_tracking p ON u.id = p.user_id
-        WHERE u.created_at >= CURRENT_TIMESTAMP - INTERVAL '${rangeMap[range]}';
+        WHERE u.created_at >= ${cutoffDate};
       `
     );
 
@@ -133,8 +134,8 @@ export async function getReportStats(range: "7d" | "30d" | "90d" | "all" = "7d")
           ROUND((COUNT(DISTINCT CASE WHEN p.completed = true THEN p.user_id END)::decimal / 
                   NULLIF(COUNT(DISTINCT p.user_id), 0) * 100))::int as module_completion_rate
         FROM progress_tracking p
-        LEFT JOIN quiz_attempts qa ON qa.created_at >= CURRENT_TIMESTAMP - INTERVAL '${rangeMap[range]}'
-        WHERE p.created_at >= CURRENT_TIMESTAMP - INTERVAL '${rangeMap[range]}';
+        LEFT JOIN quiz_attempts qa ON qa.created_at >= ${cutoffDate}
+        WHERE COALESCE(p.last_accessed_at, p.updated_at) >= ${cutoffDate};
       `
     );
 
@@ -152,7 +153,7 @@ export async function getReportStats(range: "7d" | "30d" | "90d" | "all" = "7d")
         FROM progress_tracking p
         JOIN lessons l ON p.lesson_id = l.id
         JOIN modules m ON l.module_id = m.id
-        WHERE p.completed = true AND p.created_at >= CURRENT_TIMESTAMP - INTERVAL '${rangeMap[range]}'
+        WHERE p.completed = true AND COALESCE(p.last_accessed_at, p.updated_at) >= ${cutoffDate}
         GROUP BY m.id, m.title
         ORDER BY completions DESC
         LIMIT 5;
@@ -169,7 +170,7 @@ export async function getReportStats(range: "7d" | "30d" | "90d" | "all" = "7d")
         WITH RECURSIVE dates AS (
           SELECT CAST(CURRENT_DATE - INTERVAL '6 days' AS DATE) as date
           UNION ALL
-          SELECT date + INTERVAL '1 day' FROM dates
+          SELECT CAST(date + INTERVAL '1 day' AS DATE) FROM dates
           WHERE date < CURRENT_DATE
         )
         SELECT
@@ -177,7 +178,7 @@ export async function getReportStats(range: "7d" | "30d" | "90d" | "all" = "7d")
           COUNT(DISTINCT CASE WHEN u.created_at::DATE = d.date THEN u.id END)::int as new_users,
           COUNT(DISTINCT u.id) FILTER (WHERE u.created_at::DATE <= d.date)::int as cumulative_users
         FROM dates d
-        LEFT JOIN users u ON u.created_at >= CURRENT_TIMESTAMP - INTERVAL '${rangeMap[range]}'
+        LEFT JOIN users u ON u.created_at >= ${cutoffDate}
         GROUP BY d.date
         ORDER BY d.date;
       `
@@ -191,13 +192,14 @@ export async function getReportStats(range: "7d" | "30d" | "90d" | "all" = "7d")
     }>(
       sql`
         SELECT
-          u.role,
-          COUNT(DISTINCT CASE WHEN p.created_at >= CURRENT_DATE - INTERVAL '7 days' THEN u.id END)::int as active_users,
+          r.name::text as role,
+          COUNT(DISTINCT CASE WHEN COALESCE(p.last_accessed_at, p.updated_at) >= CURRENT_DATE - INTERVAL '7 days' THEN u.id END)::int as active_users,
           COUNT(DISTINCT u.id)::int as total_users
         FROM users u
+        JOIN roles r ON r.id = u.role_id
         LEFT JOIN progress_tracking p ON u.id = p.user_id
-        WHERE u.created_at >= CURRENT_TIMESTAMP - INTERVAL '${rangeMap[range]}'
-        GROUP BY u.role;
+        WHERE u.created_at >= ${cutoffDate}
+        GROUP BY r.name;
       `
     );
 

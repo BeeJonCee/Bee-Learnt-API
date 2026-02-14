@@ -8,7 +8,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { eq, and } from "drizzle-orm";
 import { db } from "../../core/database/index.js";
-import { parentStudentLinks, moduleAssignments, users } from "../../core/database/schema/index.js";
+import { parentStudentLinks, moduleAssignments, roles, users } from "../../core/database/schema/index.js";
 import type { BeeLearntRole } from "../../shared/types/auth.js";
 import { hasPermission, hasAnyPermission, hasAllPermissions, type Permission } from "./permissions.js";
 
@@ -330,12 +330,16 @@ export async function getAccessibleStudentIds(
   userId: string,
   role: BeeLearntRole
 ): Promise<string[]> {
-  // Admin can access all students
+  // Admin/tutor can access all students.
+  // Do not assume role IDs are stable across databases.
   if (role === "ADMIN" || role === "TUTOR") {
-    const allStudents = await db.query.users.findMany({
-      where: eq(users.roleId, 1), // Assuming roleId 1 is STUDENT
-    });
-    return allStudents.map((u) => u.id);
+    const allStudents = await db
+      .select({ id: users.id })
+      .from(users)
+      .innerJoin(roles, eq(users.roleId, roles.id))
+      .where(eq(roles.name, "STUDENT"));
+
+    return allStudents.map((student) => student.id);
   }
 
   // Parent can access linked children
