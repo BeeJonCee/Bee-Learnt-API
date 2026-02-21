@@ -1,4 +1,3 @@
-import "./patch-yaml.js"; // Must be first — patches yaml before swagger-jsdoc loads it
 import swaggerJsdoc from "swagger-jsdoc";
 import { env } from "./env.js";
 

@@ -7,7 +7,7 @@ import { db } from "../core/database/index.js";
  * This sets up the foundation for organizing content by curriculum, grades, topics,
  * and NSC past paper documents.
  */
-async function migrate() {
+export async function migrate() {
   console.log("Starting curriculum and NSC papers migration...");
 
   // ============ ENUMS ============
@@ -315,7 +315,11 @@ async function migrate() {
   console.log("Migration complete: curriculum hierarchy and NSC papers tables created.");
 }
 
-migrate().catch((error) => {
-  console.error("Migration failed", error);
-  process.exit(1);
-});
+// Auto-run when executed directly (e.g. `tsx src/seed/migrate-nsc-curriculum.ts`)
+const isMain = process.argv[1]?.replace(/\\/g, "/").includes("seed/migrate-");
+if (isMain) {
+  migrate().catch((error) => {
+    console.error("Migration failed", error);
+    process.exit(1);
+  });
+}

@@ -8,9 +8,13 @@ import { specs } from "./config/swagger.js";
 import { authenticate } from "./core/middleware/auth.js";
 import { errorHandler } from "./core/middleware/error-handler.js";
 import { notFound } from "./core/middleware/not-found.js";
+import { requestLogger } from "./core/middleware/request-logger.js";
 import { router } from "./routes/index.js";
 
 const app = express();
+
+// ─── Request Logging ────────────────────────────────────────────────
+app.use(requestLogger);
 
 // ─── CORS ──────────────────────────────────────────────────────────
 const corsOrigin =

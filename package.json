@@ -75,7 +75,7 @@
   },
   "overrides": {
     "swagger-jsdoc": {
-      "yaml": "2.7.0"
+      "yaml": "^1.10.0"
     }
   }
 }

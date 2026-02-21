@@ -6,7 +6,7 @@ import { db } from "../core/database/index.js";
  * Migration script to create the subject_resources table.
  * Stores grade-level resources (textbooks, guides, data files) not tied to a specific lesson.
  */
-async function migrate() {
+export async function migrate() {
   console.log("Starting subject_resources migration...");
 
   // Create enum
@@ -67,7 +67,11 @@ async function migrate() {
   console.log("subject_resources migration complete!");
 }
 
-migrate().catch((error) => {
-  console.error("Migration failed:", error);
-  process.exit(1);
-});
+// Auto-run when executed directly (e.g. `tsx src/seed/migrate-subject-resources.ts`)
+const isMain = process.argv[1]?.replace(/\\/g, "/").includes("seed/migrate-");
+if (isMain) {
+  migrate().catch((error) => {
+    console.error("Migration failed:", error);
+    process.exit(1);
+  });
+}

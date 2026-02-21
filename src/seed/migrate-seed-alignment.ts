@@ -6,7 +6,7 @@ import { db } from "../core/database/index.js";
  * Seed alignment migration.
  * Adds indexes for the key lookup patterns used by seed/upsert scripts.
  */
-async function migrate() {
+export async function migrate() {
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS idx_seed_modules_subject_title
     ON modules(subject_id, title);
@@ -50,7 +50,11 @@ async function migrate() {
   console.log("Migration complete: seed alignment indexes created.");
 }
 
-migrate().catch((error) => {
-  console.error("Migration failed", error);
-  process.exit(1);
-});
+// Auto-run when executed directly (e.g. `tsx src/seed/migrate-seed-alignment.ts`)
+const isMain = process.argv[1]?.replace(/\\/g, "/").includes("seed/migrate-");
+if (isMain) {
+  migrate().catch((error) => {
+    console.error("Migration failed", error);
+    process.exit(1);
+  });
+}

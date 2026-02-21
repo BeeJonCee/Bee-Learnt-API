@@ -11,7 +11,7 @@ import { db } from "../core/database/index.js";
  * The users.id column is a standalone uuid PK (not a cross-DB FK).
  */
 
-async function migrate() {
+export async function migrate() {
   await db.execute(sql`
     DO $$
     BEGIN
@@ -427,7 +427,11 @@ async function migrate() {
   console.log("Migration complete: core tables created in beelearnt database.");
 }
 
-migrate().catch((error) => {
-  console.error("Migration failed", error);
-  process.exit(1);
-});
+// Auto-run when executed directly (e.g. `tsx src/seed/migrate-core.ts`)
+const isMain = process.argv[1]?.replace(/\\/g, "/").includes("seed/migrate-");
+if (isMain) {
+  migrate().catch((error) => {
+    console.error("Migration failed", error);
+    process.exit(1);
+  });
+}
