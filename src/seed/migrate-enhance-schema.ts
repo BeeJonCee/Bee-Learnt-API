@@ -206,8 +206,9 @@ export async function enhanceSchema() {
   }
 }
 
-// Run if executed directly
-if (require.main === module) {
+// Auto-run when executed directly (e.g. `tsx src/seed/migrate-enhance-schema.ts`)
+const isMain = process.argv[1]?.replace(/\\/g, "/").includes("seed/migrate-");
+if (isMain) {
   enhanceSchema()
     .then(() => {
       console.log("\n✨ Migration complete!");

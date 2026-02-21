@@ -447,7 +447,7 @@ async function seedQuestionBankAndAssessmentsFromQuizzes() {
   }
 }
 
-async function runSeed() {
+export async function seed() {
   await ensureRoles();
   await ensureBadges();
   await seedSubject(itSubject, itModules);
@@ -456,11 +456,15 @@ async function runSeed() {
   await seedQuestionBankAndAssessmentsFromQuizzes();
 }
 
-runSeed()
-  .then(() => {
-    console.log("Seed complete");
-  })
-  .catch((error) => {
-    console.error("Seed failed", error);
-    process.exit(1);
-  });
+// Auto-run when executed directly (e.g. `tsx src/seed/seed.ts`)
+const isMain = process.argv[1]?.replace(/\\/g, "/").includes("seed/seed");
+if (isMain) {
+  seed()
+    .then(() => {
+      console.log("Seed complete");
+    })
+    .catch((error) => {
+      console.error("Seed failed", error);
+      process.exit(1);
+    });
+}

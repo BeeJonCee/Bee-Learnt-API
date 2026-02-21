@@ -17,7 +17,7 @@ import { db as authDb } from "../core/database/neon-auth-db.js";
  * NOT in a "neon_auth" schema of the beelearnt database.
  */
 
-async function migrateUsersToUuid() {
+export async function migrateUsersToUuid() {
   console.log("🚀 Starting migration: Convert users.id from integer to uuid\n");
 
   try {
@@ -166,12 +166,16 @@ async function migrateUsersToUuid() {
   }
 }
 
-migrateUsersToUuid()
-  .then(() => {
-    console.log("✅ Script completed");
-    process.exit(0);
-  })
-  .catch((error) => {
-    console.error("❌ Script failed:", error);
-    process.exit(1);
-  });
+// Auto-run when executed directly (e.g. `tsx src/seed/migrate-users-to-uuid.ts`)
+const isMain = process.argv[1]?.replace(/\\/g, "/").includes("seed/migrate-");
+if (isMain) {
+  migrateUsersToUuid()
+    .then(() => {
+      console.log("✅ Script completed");
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error("❌ Script failed:", error);
+      process.exit(1);
+    });
+}
