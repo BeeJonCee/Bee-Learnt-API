@@ -1,24 +1,14 @@
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 import { env } from "../../config/env.js";
 
 const APP_NAME = "BeeLearnt";
-const FROM_EMAIL = env.fromEmail || "noreply@beelearnt.com";
+const FROM_EMAIL = env.fromEmail || "noreply@beeintelligence.tech";
 
-const transporter = nodemailer.createTransport({
-  host: env.smtpHost || "smtp.gmail.com",
-  port: env.smtpPort || 587,
-  secure: env.smtpSecure || false,
-  auth: {
-    user: env.smtpUser || "",
-    pass: env.smtpPassword || "",
-  },
-  connectionTimeout: 8_000,
-  greetingTimeout: 8_000,
-  socketTimeout: 10_000,
-});
-
-function hasSmtpCredentials() {
-  return Boolean(env.smtpUser?.trim() && env.smtpPassword?.trim());
+function getResend() {
+  if (!env.resendApiKey) {
+    throw new Error("RESEND_API_KEY is not configured");
+  }
+  return new Resend(env.resendApiKey);
 }
 
 export async function sendPasswordResetEmail(input: {
@@ -26,9 +16,7 @@ export async function sendPasswordResetEmail(input: {
   resetUrl: string;
   expiresInMinutes: number;
 }): Promise<void> {
-  if (!hasSmtpCredentials()) {
-    throw new Error("SMTP credentials are not configured");
-  }
+  const resend = getResend();
 
   const html = `
     <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6;color:#111827;">
@@ -54,13 +42,17 @@ export async function sendPasswordResetEmail(input: {
     "If you did not request a password reset, ignore this email.",
   ].join("\n");
 
-  await transporter.sendMail({
-    from: `"${APP_NAME}" <${FROM_EMAIL}>`,
+  const { error } = await resend.emails.send({
+    from: `${APP_NAME} <${FROM_EMAIL}>`,
     to: input.toEmail,
     subject: `${APP_NAME}: Reset your password`,
     text,
     html,
   });
+
+  if (error) {
+    throw new Error(`Resend error: ${error.message}`);
+  }
 }
 
 export async function sendTwoFactorCodeEmail(input: {
@@ -69,9 +61,7 @@ export async function sendTwoFactorCodeEmail(input: {
   expiresInMinutes: number;
   purpose: "login" | "register" | "social";
 }): Promise<void> {
-  if (!hasSmtpCredentials()) {
-    throw new Error("SMTP credentials are not configured");
-  }
+  const resend = getResend();
 
   const subjectPrefix =
     input.purpose === "register"
@@ -102,12 +92,15 @@ export async function sendTwoFactorCodeEmail(input: {
     "If you did not initiate this request, ignore this email.",
   ].join("\n");
 
-  await transporter.sendMail({
-    from: `"${APP_NAME}" <${FROM_EMAIL}>`,
+  const { error } = await resend.emails.send({
+    from: `${APP_NAME} <${FROM_EMAIL}>`,
     to: input.toEmail,
     subject: `${APP_NAME}: ${subjectPrefix}`,
     text,
     html,
   });
-}
 
+  if (error) {
+    throw new Error(`Resend error: ${error.message}`);
+  }
+}
