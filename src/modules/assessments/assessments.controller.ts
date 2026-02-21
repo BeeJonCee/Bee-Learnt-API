@@ -3,6 +3,7 @@ import { parseNumber } from "../../shared/utils/parse.js";
 import {
   listAssessments,
   getAssessmentDetail,
+  getAssessmentQuestionOptionsDebug,
   createAssessment,
   publishAssessment,
   startAssessmentAttempt,
@@ -43,6 +44,25 @@ export const getById = asyncHandler(async (req, res) => {
   }
 
   res.json(detail);
+});
+
+// GET /api/assessments/questions/:assessmentQuestionId/options-debug
+export const debugQuestionOptions = asyncHandler(async (req, res) => {
+  const assessmentQuestionId = parseNumber(
+    req.params.assessmentQuestionId as string
+  );
+  if (!assessmentQuestionId) {
+    res.status(400).json({ message: "Invalid assessment question ID" });
+    return;
+  }
+
+  const payload = await getAssessmentQuestionOptionsDebug(assessmentQuestionId);
+  if (!payload) {
+    res.status(404).json({ message: "Assessment question not found" });
+    return;
+  }
+
+  res.json(payload);
 });
 
 // POST /api/assessments

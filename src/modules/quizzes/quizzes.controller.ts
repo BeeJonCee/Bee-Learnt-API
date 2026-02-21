@@ -75,22 +75,94 @@ function toDisplayText(value: unknown): string {
 }
 
 function parseOptions(raw: unknown): QuestionOption[] {
-  if (!Array.isArray(raw)) return [];
+  const normalizedRaw =
+    typeof raw === "string"
+      ? (() => {
+          const trimmed = raw.trim();
+          if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return raw;
+          try {
+            return JSON.parse(trimmed) as unknown;
+          } catch {
+            return raw;
+          }
+        })()
+      : raw;
 
-  return raw.map((entry, index) => {
-    if (typeof entry === "string") return { id: String(index), text: entry };
-    if (entry && typeof entry === "object") {
-      const option = entry as Record<string, unknown>;
+  const parseOptionEntry = (
+    entry: unknown,
+    index: number,
+    explicitId?: string
+  ): QuestionOption => {
+    if (
+      typeof entry === "string" ||
+      typeof entry === "number" ||
+      typeof entry === "boolean"
+    ) {
       return {
-        id: String(option.id ?? index),
-        text: toDisplayText(option.text ?? option.label ?? option.value) || `Option ${index + 1}`,
+        id: explicitId ?? String(index),
+        text: toDisplayText(entry) || `Option ${index + 1}`,
       };
     }
+
+    if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      const option = entry as Record<string, unknown>;
+      const id = String(option.id ?? option.key ?? option.code ?? explicitId ?? index);
+      const text =
+        toDisplayText(
+          option.text ??
+            option.label ??
+            option.value ??
+            option.optionText ??
+            option.option_text ??
+            option.option ??
+            option.content ??
+            option.answer ??
+            option.title ??
+            option.name
+        ) || `Option ${index + 1}`;
+      return { id, text };
+    }
+
     return {
-      id: String(index),
+      id: explicitId ?? String(index),
       text: toDisplayText(entry) || `Option ${index + 1}`,
     };
-  });
+  };
+
+  if (Array.isArray(normalizedRaw)) {
+    return normalizedRaw.map((entry, index) => parseOptionEntry(entry, index));
+  }
+
+  if (normalizedRaw && typeof normalizedRaw === "object") {
+    const obj = normalizedRaw as Record<string, unknown>;
+    const nestedKeys = ["options", "choices", "items", "values"] as const;
+
+    for (const key of nestedKeys) {
+      if (obj[key] !== undefined) {
+        const nested = parseOptions(obj[key]);
+        if (nested.length > 0) return nested;
+      }
+    }
+
+    const mapEntries = Object.entries(obj).filter(
+      ([key]) =>
+        ![
+          "type",
+          "left",
+          "right",
+          "pairs",
+          "shuffleLeft",
+          "shuffleRight",
+        ].includes(key)
+    );
+    if (mapEntries.length > 0) {
+      return mapEntries.map(([key, value], index) =>
+        parseOptionEntry(value, index, key)
+      );
+    }
+  }
+
+  return [];
 }
 
 function optionLabel(value: unknown, optionsRaw: unknown): string {

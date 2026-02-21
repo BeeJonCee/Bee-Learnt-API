@@ -153,23 +153,89 @@ function ensureMinimumGeneratedQuestions(
 }
 
 function parseQuizOptions(raw: unknown): QuizOption[] {
-  if (!Array.isArray(raw)) return [];
+  const normalizedRaw =
+    typeof raw === "string"
+      ? (() => {
+          const trimmed = raw.trim();
+          if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return raw;
+          try {
+            return JSON.parse(trimmed) as unknown;
+          } catch {
+            return raw;
+          }
+        })()
+      : raw;
 
-  return raw.map((entry, index) => {
-    if (typeof entry === "string") {
-      return { id: String(index), text: entry };
+  const parseOptionEntry = (
+    entry: unknown,
+    index: number,
+    explicitId?: string
+  ): QuizOption => {
+    if (
+      typeof entry === "string" ||
+      typeof entry === "number" ||
+      typeof entry === "boolean"
+    ) {
+      return { id: explicitId ?? String(index), text: String(entry) };
     }
 
-    if (entry && typeof entry === "object") {
+    if (entry && typeof entry === "object" && !Array.isArray(entry)) {
       const option = entry as Record<string, unknown>;
+      const id = String(option.id ?? option.key ?? option.code ?? explicitId ?? index);
+      const textCandidate =
+        option.text ??
+        option.label ??
+        option.value ??
+        option.optionText ??
+        option.option_text ??
+        option.option ??
+        option.content ??
+        option.answer ??
+        option.title ??
+        option.name;
       return {
-        id: String(option.id ?? index),
-        text: String(option.text ?? option.label ?? option.value ?? ""),
+        id,
+        text: String(textCandidate ?? "").trim(),
       };
     }
 
-    return { id: String(index), text: String(entry) };
-  });
+    return { id: explicitId ?? String(index), text: String(entry ?? "") };
+  };
+
+  if (Array.isArray(normalizedRaw)) {
+    return normalizedRaw.map((entry, index) => parseOptionEntry(entry, index));
+  }
+
+  if (normalizedRaw && typeof normalizedRaw === "object") {
+    const obj = normalizedRaw as Record<string, unknown>;
+    const nestedKeys = ["options", "choices", "items", "values"] as const;
+
+    for (const key of nestedKeys) {
+      if (obj[key] !== undefined) {
+        const nested = parseQuizOptions(obj[key]);
+        if (nested.length > 0) return nested;
+      }
+    }
+
+    const mapEntries = Object.entries(obj).filter(
+      ([key]) =>
+        ![
+          "type",
+          "left",
+          "right",
+          "pairs",
+          "shuffleLeft",
+          "shuffleRight",
+        ].includes(key)
+    );
+    if (mapEntries.length > 0) {
+      return mapEntries.map(([key, value], index) =>
+        parseOptionEntry(value, index, key)
+      );
+    }
+  }
+
+  return [];
 }
 
 function parseJsonIfNeeded(value: string | null): unknown {

@@ -2,7 +2,14 @@ import { Router } from "express";
 import { requireAuth, requireRole } from "../../core/middleware/auth.js";
 import { validateBody, validateQuery } from "../../core/middleware/validate.js";
 import { assessmentCreateSchema, assessmentListQuerySchema } from "../../shared/validators/index.js";
-import { create, getById, list, publish, start } from "./assessments.controller.js";
+import {
+  create,
+  debugQuestionOptions,
+  getById,
+  list,
+  publish,
+  start,
+} from "./assessments.controller.js";
 
 const assessmentsRoutes = Router();
 
@@ -35,6 +42,13 @@ const assessmentsRoutes = Router();
  *         description: List of assessments
  */
 assessmentsRoutes.get("/", requireAuth, validateQuery(assessmentListQuerySchema), list);
+
+assessmentsRoutes.get(
+  "/questions/:assessmentQuestionId/options-debug",
+  requireAuth,
+  requireRole(["ADMIN", "TUTOR"]),
+  debugQuestionOptions
+);
 
 /**
  * @swagger

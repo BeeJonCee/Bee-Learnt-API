@@ -2,6 +2,7 @@ import { asyncHandler } from "../../core/middleware/async-handler.js";
 import {
   listQuestions,
   getQuestionById,
+  getQuestionOptionsDebug,
   createQuestion,
   updateQuestion,
   deleteQuestion,
@@ -55,6 +56,22 @@ export const getById = asyncHandler(async (req, res) => {
   }
 
   res.json(question);
+});
+
+export const debugOptions = asyncHandler(async (req, res) => {
+  const id = parseNumber(req.params.id as string);
+  if (!id) {
+    res.status(400).json({ message: "Invalid question ID" });
+    return;
+  }
+
+  const payload = await getQuestionOptionsDebug(id);
+  if (!payload) {
+    res.status(404).json({ message: "Question not found" });
+    return;
+  }
+
+  res.json(payload);
 });
 
 export const create = asyncHandler(async (req, res) => {

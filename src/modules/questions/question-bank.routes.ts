@@ -11,6 +11,7 @@ import {
 import {
   list,
   getById,
+  debugOptions,
   create,
   update,
   remove,
@@ -99,6 +100,13 @@ questionBankRoutes.get(
   requireAuth,
   requireRole(["ADMIN", "TUTOR"]),
   stats
+);
+
+questionBankRoutes.get(
+  "/:id/options-debug",
+  requireAuth,
+  requireRole(["ADMIN", "TUTOR"]),
+  debugOptions
 );
 
 /**

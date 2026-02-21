@@ -36,6 +36,18 @@ export interface MatchPair {
   right: string;
 }
 
+type OptionDebugItem = {
+  id: string;
+  text: string;
+  imageUrl?: string;
+  isPlaceholder: boolean;
+};
+
+type OptionDebugResult = {
+  parsedFrom: string;
+  items: OptionDebugItem[];
+};
+
 type ListQuestionsInput = {
   subjectId?: number;
   moduleId?: number;
@@ -83,6 +95,160 @@ type RandomQuestionsInput = {
   count: number;
   excludeIds?: number[];
 };
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function toDisplayText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean")
+    return String(value);
+  if (typeof value === "object") {
+    const payload = value as Record<string, unknown>;
+    if (payload.text !== undefined) return toDisplayText(payload.text);
+    if (payload.label !== undefined) return toDisplayText(payload.label);
+    if (payload.value !== undefined) return toDisplayText(payload.value);
+    return safeStringify(value);
+  }
+  return String(value);
+}
+
+function tryParseJson(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function readOptionText(option: Record<string, unknown>): string {
+  const direct = [
+    option.text,
+    option.label,
+    option.value,
+    option.optionText,
+    option.option_text,
+    option.option,
+    option.content,
+    option.answer,
+    option.title,
+    option.name,
+    option.description,
+  ];
+
+  for (const candidate of direct) {
+    const text = toDisplayText(candidate).trim();
+    if (text.length > 0) return text;
+  }
+
+  return "";
+}
+
+function readOptionImageUrl(option: Record<string, unknown>): string | undefined {
+  const candidate = option.imageUrl ?? option.image_url ?? option.image;
+  if (typeof candidate !== "string") return undefined;
+  const trimmed = candidate.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function parseOptionEntry(
+  entry: unknown,
+  index: number,
+  explicitId?: string
+): OptionDebugItem {
+  const normalized = tryParseJson(entry);
+
+  if (
+    typeof normalized === "string" ||
+    typeof normalized === "number" ||
+    typeof normalized === "boolean"
+  ) {
+    const text = toDisplayText(normalized).trim();
+    return {
+      id: explicitId ?? String(index),
+      text: text || `Option ${index + 1}`,
+      isPlaceholder: text.length === 0,
+    };
+  }
+
+  if (normalized && typeof normalized === "object" && !Array.isArray(normalized)) {
+    const option = normalized as Record<string, unknown>;
+    const idCandidate =
+      option.id ?? option.key ?? option.code ?? explicitId ?? index;
+    const id = toDisplayText(idCandidate).trim() || String(index);
+    const text = readOptionText(option);
+    return {
+      id,
+      text: text || `Option ${index + 1}`,
+      imageUrl: readOptionImageUrl(option),
+      isPlaceholder: text.length === 0,
+    };
+  }
+
+  const fallback = toDisplayText(normalized).trim();
+  return {
+    id: explicitId ?? String(index),
+    text: fallback || `Option ${index + 1}`,
+    isPlaceholder: fallback.length === 0,
+  };
+}
+
+function parseOptionsForDebug(raw: unknown, source = "root"): OptionDebugResult {
+  const normalized = tryParseJson(raw);
+  if (!normalized) {
+    return { parsedFrom: source, items: [] };
+  }
+
+  if (Array.isArray(normalized)) {
+    return {
+      parsedFrom: source,
+      items: normalized.map((entry, index) => parseOptionEntry(entry, index)),
+    };
+  }
+
+  if (typeof normalized === "object" && normalized !== null) {
+    const obj = normalized as Record<string, unknown>;
+    const nestedKeys = ["options", "choices", "items", "values"] as const;
+    for (const key of nestedKeys) {
+      if (obj[key] !== undefined) {
+        const nested = parseOptionsForDebug(obj[key], `${source}.${key}`);
+        if (nested.items.length > 0) return nested;
+      }
+    }
+
+    const mapEntries = Object.entries(obj).filter(
+      ([key]) =>
+        ![
+          "type",
+          "left",
+          "right",
+          "pairs",
+          "shuffleLeft",
+          "shuffleRight",
+        ].includes(key)
+    );
+    if (mapEntries.length > 0) {
+      return {
+        parsedFrom: `${source}.map`,
+        items: mapEntries.map(([key, value], index) =>
+          parseOptionEntry(value, index, key)
+        ),
+      };
+    }
+  }
+
+  return { parsedFrom: source, items: [] };
+}
 
 export async function listQuestions(input: ListQuestionsInput) {
   const conditions: any[] = [];
@@ -209,6 +375,51 @@ export async function getQuestionById(id: number) {
     .where(eq(questionBankItems.id, id));
 
   return question ?? null;
+}
+
+export async function getQuestionOptionsDebug(id: number) {
+  const [question] = await db
+    .select({
+      id: questionBankItems.id,
+      type: questionBankItems.type,
+      questionText: questionBankItems.questionText,
+      options: questionBankItems.options,
+      correctAnswer: questionBankItems.correctAnswer,
+      subjectId: questionBankItems.subjectId,
+      moduleId: questionBankItems.moduleId,
+      isActive: questionBankItems.isActive,
+      updatedAt: questionBankItems.updatedAt,
+    })
+    .from(questionBankItems)
+    .where(eq(questionBankItems.id, id));
+
+  if (!question) return null;
+
+  const parsed = parseOptionsForDebug(question.options);
+  const placeholderCount = parsed.items.filter((item) => item.isPlaceholder).length;
+
+  return {
+    question: {
+      id: question.id,
+      type: question.type,
+      questionText: question.questionText,
+      subjectId: question.subjectId,
+      moduleId: question.moduleId,
+      isActive: question.isActive,
+      updatedAt: question.updatedAt,
+    },
+    raw: {
+      options: question.options,
+      correctAnswer: question.correctAnswer,
+      optionsType: question.options === null ? "null" : typeof question.options,
+    },
+    normalized: {
+      parsedFrom: parsed.parsedFrom,
+      optionCount: parsed.items.length,
+      placeholderCount,
+      items: parsed.items,
+    },
+  };
 }
 
 export async function createQuestion(input: CreateQuestionInput, createdBy: string) {
