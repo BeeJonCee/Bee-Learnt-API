@@ -283,8 +283,8 @@ export const getQuizAttempts = asyncHandler(async (req: Request, res: Response) 
   const userId = studentId ? String(studentId) : req.user.id;
 
   // Check if user has access (handled by guard middleware in routes)
-  const { quizAttempts } = await import("../core/database/schema/index.js");
-  const { getAccessibleStudentIds } = await import("../lib/rbac/guard.js");
+  const { quizAttempts } = await import("../../core/database/schema/index.js");
+  const { getAccessibleStudentIds } = await import("../../shared/rbac/guard.js");
 
   const accessibleIds = await getAccessibleStudentIds(req.user.id, req.user.role);
   if (!accessibleIds.includes(userId)) {
@@ -367,8 +367,8 @@ export const getStudentQuizResults = asyncHandler(async (req: Request, res: Resp
     return;
   }
 
-  const { quizAttempts } = await import("../core/database/schema/index.js");
-  const { getAccessibleStudentIds } = await import("../lib/rbac/guard.js");
+  const { quizAttempts } = await import("../../core/database/schema/index.js");
+  const { getAccessibleStudentIds } = await import("../../shared/rbac/guard.js");
 
   // Check access
   const accessibleIds = await getAccessibleStudentIds(req.user.id, req.user.role);
@@ -471,7 +471,7 @@ export const updateQuizVisibility = asyncHandler(async (req: Request, res: Respo
   }
 
   // Update visibility settings
-  const { quizzes } = await import("../core/database/schema/index.js");
+  const { quizzes } = await import("../../core/database/schema/index.js");
   const updateData: any = {};
 
   if (revealCorrectAnswers !== undefined) {
@@ -493,7 +493,7 @@ export const updateQuizVisibility = asyncHandler(async (req: Request, res: Respo
     .returning();
 
   // Log audit
-  const { logAudit } = await import("../lib/audit/auditLog.js");
+  const { logAudit } = await import("../../shared/audit/audit-log.js");
   await logAudit({
     actorId: req.user.id,
     action: "quiz.visibility_update",

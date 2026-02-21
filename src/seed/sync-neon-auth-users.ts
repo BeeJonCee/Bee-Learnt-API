@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { db as authDb } from "../core/database/neon-auth-db.js";
 import { neonAuthUsers } from "../core/database/neon-auth-schema.js";
-import { syncUserFromNeonAuth } from "../services/neon-auth-sync.js";
+import { syncUserFromNeonAuth } from "../modules/auth/neon-auth-sync.js";
 
 async function run() {
   if (!authDb) {

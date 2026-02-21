@@ -14,7 +14,7 @@
 import "dotenv/config";
 import { sql } from "drizzle-orm";
 import { db as authDb } from "../core/database/neon-auth-db.js";
-import { mapMemberRoleToBeeRole } from "../services/neon-member.service.js";
+import { mapMemberRoleToBeeRole } from "../modules/tokens/neon-member.service.js";
 
 interface MemberRecord extends Record<string, unknown> {
   id: string;

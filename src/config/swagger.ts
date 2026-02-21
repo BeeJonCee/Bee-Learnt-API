@@ -424,7 +424,7 @@ const options = {
       },
     ],
   },
-  apis: ["./src/routes/**/*.ts", "./src/controllers/**/*.ts", "./src/modules/**/*.ts"],
+  apis: ["./src/modules/**/*.ts"],
 };
 
 export const specs = (() => {

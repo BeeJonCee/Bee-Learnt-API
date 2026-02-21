@@ -18,7 +18,7 @@ import { sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
 import { syncToNeonAuthUser, syncPasswordToNeonAuth } from "../shared/utils/schema-sync.js";
-import { syncUserFromNeonAuth } from "../services/neon-auth-sync.js";
+import { syncUserFromNeonAuth } from "../modules/auth/neon-auth-sync.js";
 
 const TEST_USER = {
   email: `test-${Date.now()}@beelearnt.com`,
