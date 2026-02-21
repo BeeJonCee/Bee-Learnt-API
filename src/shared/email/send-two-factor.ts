@@ -12,6 +12,9 @@ const transporter = nodemailer.createTransport({
     user: env.smtpUser || "",
     pass: env.smtpPassword || "",
   },
+  connectionTimeout: 8_000,
+  greetingTimeout: 8_000,
+  socketTimeout: 10_000,
 });
 
 function hasSmtpCredentials() {

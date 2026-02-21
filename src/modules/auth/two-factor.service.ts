@@ -47,6 +47,7 @@ export async function sendTwoFactorChallenge(input: {
     expiresAt,
   });
 
+  let emailDelivered = true;
   try {
     await sendTwoFactorCodeEmail({
       toEmail: email,
@@ -55,11 +56,9 @@ export async function sendTwoFactorChallenge(input: {
       purpose: input.purpose,
     });
   } catch (error) {
-    throw new HttpError(
-      error instanceof Error
-        ? `Failed to send verification code: ${error.message}`
-        : "Failed to send verification code",
-      503,
+    emailDelivered = false;
+    console.warn(
+      `[two-factor] email delivery failed for ${maskEmail(email)}: ${error instanceof Error ? error.message : error}`,
     );
   }
 
@@ -68,7 +67,10 @@ export async function sendTwoFactorChallenge(input: {
     factorType: "email" as const,
     maskedEmail: maskEmail(email),
     expiresInSeconds: TWO_FACTOR_EXPIRY_MINUTES * 60,
-    message: "Verification code sent to your email address.",
+    message: emailDelivered
+      ? "Verification code sent to your email address."
+      : "Email delivery failed — check server logs for the verification code.",
+    emailDelivered,
   };
 }
 
