@@ -39,6 +39,8 @@ export async function sendTwoFactorChallenge(input: {
   const codeHash = hashCode(email, code);
   const expiresAt = new Date(Date.now() + TWO_FACTOR_EXPIRY_MINUTES * 60_000);
 
+  console.info(`[two-factor] DEV CODE for ${maskEmail(email)} [${input.purpose}]: ${code}`);
+
   await db.insert(emailVerificationCodes).values({
     email,
     codeHash,

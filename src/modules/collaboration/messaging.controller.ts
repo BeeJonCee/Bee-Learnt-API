@@ -1,5 +1,5 @@
+import type { Request, Response } from "express";
 import { asyncHandler } from "../../core/middleware/async-handler.js";
-import { parseNumber } from "../../shared/utils/parse.js";
 import {
   listMessages,
   getMessageById,
@@ -9,40 +9,45 @@ import {
   getUnreadCount,
 } from "./messaging.service.js";
 
-export const listInboxHandler = asyncHandler(async (req, res) => {
-  const userId = req.user!.id;
-  const { unreadOnly, limit, offset } = req.query;
+export const listInboxHandler = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.id ?? null;
+  if (!userId) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
 
-  const result = await listMessages({
-    userId,
-    type: "inbox",
-    unreadOnly: unreadOnly === "true",
-    limit: limit ? Number(limit) : undefined,
-    offset: offset ? Number(offset) : undefined,
-  });
+  const limit = req.query.limit ? Number(req.query.limit as string) : 50;
+  const page = req.query.page ? Number(req.query.page as string) : 1;
+  const offset = (page - 1) * limit;
 
+  const result = await listMessages({ userId, type: "inbox", limit, offset });
   res.json(result);
 });
 
-export const listSentHandler = asyncHandler(async (req, res) => {
-  const userId = req.user!.id;
-  const { limit, offset } = req.query;
+export const listSentHandler = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.id ?? null;
+  if (!userId) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
 
-  const result = await listMessages({
-    userId,
-    type: "sent",
-    limit: limit ? Number(limit) : undefined,
-    offset: offset ? Number(offset) : undefined,
-  });
+  const limit = req.query.limit ? Number(req.query.limit as string) : 50;
+  const page = req.query.page ? Number(req.query.page as string) : 1;
+  const offset = (page - 1) * limit;
 
+  const result = await listMessages({ userId, type: "sent", limit, offset });
   res.json(result);
 });
 
-export const getMessageHandler = asyncHandler(async (req, res) => {
-  const userId = req.user!.id;
-  const id = parseNumber(req.params.id as string);
+export const getMessageHandler = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.id ?? null;
+  if (!userId) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
 
-  if (!id) {
+  const id = Number(req.params.id as string);
+  if (Number.isNaN(id)) {
     res.status(400).json({ message: "Invalid message ID" });
     return;
   }
@@ -53,55 +58,66 @@ export const getMessageHandler = asyncHandler(async (req, res) => {
     return;
   }
 
-  // Mark as read if recipient is viewing
+  // Mark as read if recipient
   if (message.recipientId === userId && !message.readAt) {
     await markAsRead(id, userId);
-    message.readAt = new Date();
   }
 
   res.json(message);
 });
 
-export const createMessageHandler = asyncHandler(async (req, res) => {
-  const senderId = req.user!.id;
-  const { recipientId, subject, content } = req.body;
-
-  if (senderId === recipientId) {
-    res.status(400).json({ message: "Cannot send message to yourself" });
+export const createMessageHandler = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.id ?? null;
+  if (!userId) {
+    res.status(401).json({ message: "Unauthorized" });
     return;
   }
 
-  const created = await createMessage({
-    senderId,
+  const { recipientId, subject, body } = req.body as {
+    recipientId: string;
+    subject?: string;
+    body: string;
+  };
+
+  const message = await createMessage({
+    senderId: userId,
     recipientId,
     subject,
-    content,
+    content: body,
   });
 
-  res.status(201).json(created);
+  res.status(201).json(message);
 });
 
-export const deleteMessageHandler = asyncHandler(async (req, res) => {
-  const userId = req.user!.id;
-  const id = parseNumber(req.params.id as string);
+export const deleteMessageHandler = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.id ?? null;
+  if (!userId) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
 
-  if (!id) {
+  const id = Number(req.params.id as string);
+  if (Number.isNaN(id)) {
     res.status(400).json({ message: "Invalid message ID" });
     return;
   }
 
-  const message = await getMessageById(id, userId);
-  if (!message) {
-    res.status(404).json({ message: "Message not found" });
+  const result = await deleteMessage(id, userId);
+  if (!result) {
+    res.status(404).json({ message: "Message not found or access denied" });
     return;
   }
 
-  await deleteMessage(id, userId);
-  res.json({ message: "Message deleted" });
+  res.status(204).send();
 });
 
-export const getUnreadCountHandler = asyncHandler(async (req, res) => {
-  const userId = req.user!.id;
+export const getUnreadCountHandler = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.id ?? null;
+  if (!userId) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
+
   const count = await getUnreadCount(userId);
   res.json({ count });
 });

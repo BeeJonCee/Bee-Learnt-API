@@ -1,8 +1,9 @@
 import { Router } from "express";
-import { create, getById, list, update } from "./assignments.controller.js";
-import { requireAuth, requireRole } from "../../core/middleware/auth.js";
-import { validateBody } from "../../core/middleware/validate.js";
-import { assignmentCreateSchema, assignmentUpdateSchema } from "../../shared/validators/index.js";
+import { requireAuth } from "../../core/middleware/auth.js";
+import { onlyAdminOrTutor } from "../../core/guards/rbac.js";
+import { validateQuery } from "../../core/middleware/validate.js";
+import { assignmentQuerySchema } from "../../shared/validators/index.js";
+import { list, getById, create, update } from "./assignments.controller.js";
 
 const assignmentsRoutes = Router();
 
@@ -10,28 +11,42 @@ const assignmentsRoutes = Router();
  * @swagger
  * tags:
  *   name: Assignments
- *   description: Manage module assignments across learners
+ *   description: Learning assignments management
  */
 
 /**
  * @swagger
  * /api/assignments:
  *   get:
- *     summary: List assignments for the current user context
+ *     summary: List assignments (optionally filtered by moduleId or grade)
  *     tags: [Assignments]
  *     security:
  *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: moduleId
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: grade
+ *         schema:
+ *           type: integer
  *     responses:
  *       200:
- *         description: Collection of assignments
+ *         description: List of assignments
  */
-assignmentsRoutes.get("/", requireAuth, list);
+assignmentsRoutes.get(
+  "/",
+  requireAuth,
+  validateQuery(assignmentQuerySchema),
+  list
+);
 
 /**
  * @swagger
  * /api/assignments/{id}:
  *   get:
- *     summary: Fetch a specific assignment by ID
+ *     summary: Get a single assignment by ID
  *     tags: [Assignments]
  *     security:
  *       - BearerAuth: []
@@ -53,7 +68,7 @@ assignmentsRoutes.get("/:id", requireAuth, getById);
  * @swagger
  * /api/assignments:
  *   post:
- *     summary: Create a new assignment
+ *     summary: Create a new assignment (Tutor/Admin)
  *     tags: [Assignments]
  *     security:
  *       - BearerAuth: []
@@ -67,13 +82,18 @@ assignmentsRoutes.get("/:id", requireAuth, getById);
  *       201:
  *         description: Assignment created
  */
-assignmentsRoutes.post("/", requireRole(["ADMIN"]), validateBody(assignmentCreateSchema), create);
+assignmentsRoutes.post(
+  "/",
+  requireAuth,
+  onlyAdminOrTutor,
+  create
+);
 
 /**
  * @swagger
  * /api/assignments/{id}:
  *   patch:
- *     summary: Update assignment progress or metadata
+ *     summary: Update an assignment (Tutor/Admin)
  *     tags: [Assignments]
  *     security:
  *       - BearerAuth: []
@@ -83,16 +103,17 @@ assignmentsRoutes.post("/", requireRole(["ADMIN"]), validateBody(assignmentCreat
  *         required: true
  *         schema:
  *           type: integer
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
  *     responses:
  *       200:
  *         description: Assignment updated
+ *       404:
+ *         description: Assignment not found
  */
-assignmentsRoutes.patch("/:id", requireAuth, validateBody(assignmentUpdateSchema), update);
+assignmentsRoutes.patch(
+  "/:id",
+  requireAuth,
+  onlyAdminOrTutor,
+  update
+);
 
 export { assignmentsRoutes };

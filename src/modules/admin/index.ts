@@ -1,8 +1,10 @@
 // ─── Routes ────────────────────────────────────────────────────────
-export { announcementsRoutes } from "./announcements.routes.js";
-export { eventsRoutes } from "./events.routes.js";
-export { notificationsRoutes } from "./notifications.routes.js";
+export { adminRoutes } from "./admin.routes.js";
+export { analyticsRoutes } from "./analytics.routes.js";
+export { educationRoutes } from "./education.routes.js";
 
 // ─── Services ──────────────────────────────────────────────────────
-export * from "./announcements.service.js";
-export * from "./events.service.js";
+export * from "./admin.service.js";
+export * from "./admin-insights.service.js";
+export * from "./admin-system.service.js";
+export * from "./analytics.service.js";

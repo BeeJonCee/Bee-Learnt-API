@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { educationFeed } from "./external.controller.js";
-import { requireAuth } from "../../core/middleware/auth.js";
 
 const externalRoutes = Router();
 
@@ -8,21 +7,19 @@ const externalRoutes = Router();
  * @swagger
  * tags:
  *   name: External
- *   description: External integrations and data sources
+ *   description: External data feeds and resources
  */
 
 /**
  * @swagger
- * /api/external/education-feed:
+ * /api/external/feed:
  *   get:
- *     summary: Curated education news feed
+ *     summary: Get education news feed
  *     tags: [External]
- *     security:
- *       - BearerAuth: []
  *     responses:
  *       200:
- *         description: Education feed items
+ *         description: Education news feed items
  */
-externalRoutes.get("/education-feed", requireAuth, educationFeed);
+externalRoutes.get("/feed", educationFeed);
 
 export { externalRoutes };

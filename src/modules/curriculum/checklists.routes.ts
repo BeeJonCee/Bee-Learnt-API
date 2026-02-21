@@ -1,8 +1,6 @@
 import { Router } from "express";
-import { list, update } from "./checklists.controller.js";
 import { requireAuth } from "../../core/middleware/auth.js";
-import { validateBody } from "../../core/middleware/validate.js";
-import { checklistProgressSchema } from "../../shared/validators/index.js";
+import { list, update } from "./checklists.controller.js";
 
 const checklistsRoutes = Router();
 
@@ -10,28 +8,34 @@ const checklistsRoutes = Router();
  * @swagger
  * tags:
  *   name: Checklists
- *   description: Progress checklists for modules and lessons
+ *   description: Module checklist progress tracking
  */
 
 /**
  * @swagger
  * /api/checklists:
  *   get:
- *     summary: Retrieve checklist items for the current user
+ *     summary: List checklist items for a module with user progress
  *     tags: [Checklists]
  *     security:
  *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: moduleId
+ *         required: true
+ *         schema:
+ *           type: integer
  *     responses:
  *       200:
- *         description: Checklist entries
+ *         description: Checklist items with completion status
  */
 checklistsRoutes.get("/", requireAuth, list);
 
 /**
  * @swagger
- * /api/checklists:
+ * /api/checklists/progress:
  *   post:
- *     summary: Update checklist completion states
+ *     summary: Update checklist item progress for the current user
  *     tags: [Checklists]
  *     security:
  *       - BearerAuth: []
@@ -41,10 +45,18 @@ checklistsRoutes.get("/", requireAuth, list);
  *         application/json:
  *           schema:
  *             type: object
+ *             required: [itemId, completed]
+ *             properties:
+ *               itemId:
+ *                 type: integer
+ *               completed:
+ *                 type: boolean
  *     responses:
  *       200:
- *         description: Checklist updated
+ *         description: Progress updated
+ *       201:
+ *         description: Progress created
  */
-checklistsRoutes.post("/", requireAuth, validateBody(checklistProgressSchema), update);
+checklistsRoutes.post("/progress", requireAuth, update);
 
 export { checklistsRoutes };

@@ -1,43 +1,49 @@
 import type { Request, Response } from "express";
-import { z } from "zod";
 import { asyncHandler } from "../../core/middleware/async-handler.js";
 import { getOpenAiClient } from "../../clients/openai.js";
-import { env } from "../../config/env.js";
-
-const translateSchema = z.object({
-  text: z.string().min(1),
-  targetLanguage: z.string().min(2),
-});
 
 export const translateText = asyncHandler(async (req: Request, res: Response) => {
-  const parsed = translateSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ message: "Invalid payload", issues: parsed.error.issues });
+  const { text, targetLanguage, sourceLanguage } = req.body as {
+    text: string;
+    targetLanguage: string;
+    sourceLanguage?: string;
+  };
+
+  if (!text || typeof text !== "string" || text.trim().length === 0) {
+    res.status(400).json({ message: "text is required" });
+    return;
+  }
+  if (!targetLanguage || typeof targetLanguage !== "string") {
+    res.status(400).json({ message: "targetLanguage is required" });
     return;
   }
 
-  if (!env.openAiApiKey) {
-    res.json({ translatedText: parsed.data.text, source: "fallback" });
+  const openai = await getOpenAiClient();
+  if (!openai) {
+    res.status(503).json({ message: "Translation service is not configured" });
     return;
   }
 
-  const client = await getOpenAiClient();
-  const completion = await client.chat.completions.create({
+  const systemPrompt = sourceLanguage
+    ? `You are a professional translator. Translate from ${sourceLanguage} to ${targetLanguage}. Return only the translated text, no explanations.`
+    : `You are a professional translator. Translate to ${targetLanguage}. Return only the translated text, no explanations.`;
+
+  const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
-      {
-        role: "system",
-        content:
-          "You translate educational content clearly and preserve formatting. Return only the translated text.",
-      },
-      {
-        role: "user",
-        content: `Translate into ${parsed.data.targetLanguage}:\n\n${parsed.data.text}`,
-      },
+      { role: "system", content: systemPrompt },
+      { role: "user", content: text },
     ],
-    temperature: 0.2,
+    temperature: 0.3,
+    max_tokens: 2000,
   });
 
-  const translatedText = completion.choices[0]?.message?.content?.trim() ?? parsed.data.text;
-  res.json({ translatedText, source: "openai" });
+  const translated = completion.choices[0]?.message?.content?.trim() ?? "";
+
+  res.json({
+    original: text,
+    translated,
+    targetLanguage,
+    sourceLanguage: sourceLanguage ?? "auto",
+  });
 });

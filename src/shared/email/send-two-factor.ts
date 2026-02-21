@@ -18,6 +18,48 @@ function hasSmtpCredentials() {
   return Boolean(env.smtpUser?.trim() && env.smtpPassword?.trim());
 }
 
+export async function sendPasswordResetEmail(input: {
+  toEmail: string;
+  resetUrl: string;
+  expiresInMinutes: number;
+}): Promise<void> {
+  if (!hasSmtpCredentials()) {
+    throw new Error("SMTP credentials are not configured");
+  }
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6;color:#111827;">
+      <h2 style="margin-bottom:8px;">${APP_NAME} – Password Reset</h2>
+      <p>We received a request to reset your password. Click the button below to choose a new one:</p>
+      <a href="${input.resetUrl}"
+         style="display:inline-block;padding:12px 24px;background:#f6c945;color:#000;text-decoration:none;border-radius:6px;font-weight:600;margin:16px 0;">
+        Reset my password
+      </a>
+      <p style="margin-top:16px;">This link expires in ${input.expiresInMinutes} minutes.</p>
+      <p style="color:#6b7280;">If you did not request a password reset, you can safely ignore this email.</p>
+    </div>
+  `;
+
+  const text = [
+    `${APP_NAME} – Password Reset`,
+    "",
+    "We received a request to reset your password.",
+    "Open the link below to choose a new one:",
+    input.resetUrl,
+    "",
+    `Link expires in ${input.expiresInMinutes} minutes.`,
+    "If you did not request a password reset, ignore this email.",
+  ].join("\n");
+
+  await transporter.sendMail({
+    from: `"${APP_NAME}" <${FROM_EMAIL}>`,
+    to: input.toEmail,
+    subject: `${APP_NAME}: Reset your password`,
+    text,
+    html,
+  });
+}
+
 export async function sendTwoFactorCodeEmail(input: {
   toEmail: string;
   code: string;

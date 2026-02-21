@@ -6,10 +6,17 @@ import {
   socialBridge,
   exchangeNeonToken,
   register,
+  forgotPasswordHandler,
+  resetPasswordHandler,
 } from "./auth.controller.js";
 import { requireAuth } from "../../core/middleware/auth.js";
 import { validateBody } from "../../core/middleware/validate.js";
-import { loginSchema, registerSchema } from "../../shared/validators/index.js";
+import {
+  loginSchema,
+  registerSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+} from "../../shared/validators/index.js";
 
 const authRoutes = Router();
 
@@ -106,5 +113,55 @@ authRoutes.post("/social-bridge", socialBridge);
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 authRoutes.post("/exchange-neon-token", exchangeNeonToken);
+
+/**
+ * @swagger
+ * /api/auth/forgot-password:
+ *   post:
+ *     summary: Request a password reset link by email
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *     responses:
+ *       200:
+ *         description: Reset link sent (always 200 to prevent email enumeration)
+ */
+authRoutes.post("/forgot-password", validateBody(forgotPasswordSchema), forgotPasswordHandler);
+
+/**
+ * @swagger
+ * /api/auth/reset-password:
+ *   post:
+ *     summary: Reset password using token from the email link
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token, newPassword]
+ *             properties:
+ *               token:
+ *                 type: string
+ *               newPassword:
+ *                 type: string
+ *                 minLength: 6
+ *     responses:
+ *       200:
+ *         description: Password updated successfully
+ *       400:
+ *         description: Invalid or expired token
+ */
+authRoutes.post("/reset-password", validateBody(resetPasswordSchema), resetPasswordHandler);
 
 export { authRoutes };

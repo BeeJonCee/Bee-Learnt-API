@@ -1,60 +1,77 @@
 import type { Request, Response } from "express";
 import { asyncHandler } from "../../core/middleware/async-handler.js";
-import { parseUuid } from "../../shared/utils/parse.js";
 import {
-  createAttendanceRecord,
-  getParentAttendanceSummary,
   getStudentAttendanceSummary,
+  getParentAttendanceSummary,
+  createAttendanceRecord,
+  type AttendanceStatus,
 } from "./attendance.service.js";
 
-const parseDate = (value?: string | string[]) => {
-  if (!value || Array.isArray(value)) return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
+function parseDateParam(value: string | undefined, fallback: Date): Date {
+  if (!value) return fallback;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? fallback : d;
+}
 
-export const summary = asyncHandler(async (req: Request, res: Response) => {
-  const user = req.user;
-  if (!user) {
+export const getStudentSummary = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.id ?? null;
+  if (!userId) {
     res.status(401).json({ message: "Unauthorized" });
     return;
   }
 
-  const from = parseDate(req.query.from as string | undefined) ?? new Date(Date.now() - 6 * 86400000);
-  const to = parseDate(req.query.to as string | undefined) ?? new Date();
+  const studentId = (req.params.studentId as string) || userId;
 
-  if ((req.query.from && !from) || (req.query.to && !to)) {
-    res.status(400).json({ message: "Invalid date range" });
-    return;
-  }
+  const now = new Date();
+  const defaultFrom = new Date(now.getFullYear(), now.getMonth(), 1);
+  const from = parseDateParam(req.query.from as string | undefined, defaultFrom);
+  const to = parseDateParam(req.query.to as string | undefined, now);
 
-  if (user.role === "PARENT") {
-    const data = await getParentAttendanceSummary(user.id, from, to);
-    res.json(data);
-    return;
-  }
-
-  if (user.role === "ADMIN") {
-    const studentId = parseUuid(req.query.studentId as string | undefined);
-    if (!studentId) {
-      res.status(400).json({ message: "studentId is required for admin" });
-      return;
-    }
-    const data = await getStudentAttendanceSummary(studentId, from, to);
-    res.json(data);
-    return;
-  }
-
-  const data = await getStudentAttendanceSummary(user.id, from, to);
-  res.json(data);
+  const summary = await getStudentAttendanceSummary(studentId, from, to);
+  res.json({ studentId, from: from.toISOString(), to: to.toISOString(), summary });
 });
 
-export const create = asyncHandler(async (req: Request, res: Response) => {
-  const created = await createAttendanceRecord({
-    studentId: req.body.studentId,
-    date: new Date(req.body.date),
-    status: req.body.status,
-    notes: req.body.notes ?? null,
-  });
-  res.status(201).json(created);
+export const getParentSummary = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.id ?? null;
+  if (!userId) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
+
+  const now = new Date();
+  const defaultFrom = new Date(now.getFullYear(), now.getMonth(), 1);
+  const from = parseDateParam(req.query.from as string | undefined, defaultFrom);
+  const to = parseDateParam(req.query.to as string | undefined, now);
+
+  const data = await getParentAttendanceSummary(userId, from, to);
+  res.json({ from: from.toISOString(), to: to.toISOString(), children: data });
+});
+
+export const createRecord = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.id ?? null;
+  if (!userId) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
+
+  const { studentId, date, status, notes } = req.body as {
+    studentId: string;
+    date: string;
+    status: AttendanceStatus;
+    notes?: string;
+  };
+
+  if (!studentId || !date || !status) {
+    res.status(400).json({ message: "studentId, date, and status are required" });
+    return;
+  }
+
+  const parsedDate = new Date(date);
+  if (Number.isNaN(parsedDate.getTime())) {
+    res.status(400).json({ message: "Invalid date format" });
+    return;
+  }
+
+  const record = await createAttendanceRecord({ studentId, date: parsedDate, status, notes });
+  res.status(201).json(record);
 });

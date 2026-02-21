@@ -5,7 +5,7 @@ import { env } from "../../config/env.js";
 import { db } from "../../core/database/index.js";
 import { users } from "../../core/database/schema/users.schema.js";
 import { asyncHandler } from "../../core/middleware/async-handler.js";
-import { loginUser, registerUser } from "./auth.service.js";
+import { loginUser, registerUser, forgotPassword, resetPassword } from "./auth.service.js";
 import {
   sendTwoFactorChallenge,
   verifyTwoFactorCode,
@@ -573,4 +573,39 @@ export const exchangeNeonToken = asyncHandler(async (req: Request, res: Response
       role: syncResult.role,
     },
   });
+});
+
+/**
+ * POST /api/auth/forgot-password
+ * Send a password-reset link. Always responds 200 to prevent email enumeration.
+ */
+export const forgotPasswordHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { email } = req.body as { email: string };
+
+  try {
+    await forgotPassword(email);
+  } catch (error) {
+    // Log 503 (SMTP unavailable) but still return a generic 200 to the client.
+    // Re-throw any unexpected error.
+    if (!(error instanceof Error && error.message.includes("Failed to send"))) {
+      throw error;
+    }
+    console.warn(`${AUTH_API_LOG_NS} forgot-password:smtp-unavailable`);
+  }
+
+  res.json({
+    message: "If that email is registered you will receive a reset link shortly.",
+  });
+});
+
+/**
+ * POST /api/auth/reset-password
+ * Complete a password reset using the token from the email link.
+ */
+export const resetPasswordHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { token, newPassword } = req.body as { token: string; newPassword: string };
+
+  await resetPassword(token, newPassword);
+
+  res.json({ message: "Password updated successfully. You can now log in." });
 });

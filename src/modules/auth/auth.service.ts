@@ -10,11 +10,12 @@
  */
 
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import jwt from "jsonwebtoken";
-import { eq } from "drizzle-orm";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db } from "../../core/database/index.js";
-import { roles, users } from "../../core/database/schema/index.js";
+import { roles, users, passwordResetTokens } from "../../core/database/schema/index.js";
 import { env } from "../../config/env.js";
 import { HttpError } from "../../shared/utils/http-error.js";
 import type { BeeLearntRole } from "../../shared/types/auth.js";
@@ -26,6 +27,7 @@ import {
   syncPasswordToNeonAuth,
   syncToNeonAuthUser,
 } from "../../shared/utils/schema-sync.js";
+import { sendPasswordResetEmail } from "../../shared/email/send-two-factor.js";
 
 type LoginInput = {
   email: string;
@@ -278,4 +280,127 @@ export async function loginUser(input: LoginInput) {
 
   console.warn(`${AUTH_SERVICE_LOG_NS} login:failed`, { email: maskedEmail });
   throw new HttpError("Invalid email or password.", 401);
+}
+
+const RESET_TOKEN_EXPIRY_MINUTES = 60;
+const RESET_TOKEN_LOG_NS = "[auth-service:password-reset]";
+
+function generateResetToken(): { token: string; tokenHash: string } {
+  const token = crypto.randomBytes(32).toString("hex");
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  return { token, tokenHash };
+}
+
+/**
+ * Request a password reset. Always returns a generic success to avoid email enumeration.
+ * If the email belongs to an existing user the reset link is sent.
+ */
+export async function forgotPassword(email: string): Promise<void> {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const [user] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, normalizedEmail))
+    .limit(1);
+
+  if (!user) {
+    // Silent – do not reveal whether the email is registered
+    console.info(`${RESET_TOKEN_LOG_NS} forgot:email-not-found`, {
+      email: maskEmail(normalizedEmail),
+    });
+    return;
+  }
+
+  const { token, tokenHash } = generateResetToken();
+  const expiresAt = new Date(Date.now() + RESET_TOKEN_EXPIRY_MINUTES * 60_000);
+
+  await db.insert(passwordResetTokens).values({
+    userId: user.id,
+    tokenHash,
+    expiresAt,
+  });
+
+  const resetUrl = `${env.appUrl}/reset-password?token=${token}`;
+
+  try {
+    await sendPasswordResetEmail({
+      toEmail: normalizedEmail,
+      resetUrl,
+      expiresInMinutes: RESET_TOKEN_EXPIRY_MINUTES,
+    });
+    console.info(`${RESET_TOKEN_LOG_NS} forgot:email-sent`, {
+      email: maskEmail(normalizedEmail),
+      userId: user.id,
+    });
+  } catch (error) {
+    console.error(`${RESET_TOKEN_LOG_NS} forgot:email-send-failed`, {
+      email: maskEmail(normalizedEmail),
+      message: error instanceof Error ? error.message : "Unknown error",
+    });
+    // Surface the error so the controller can tell the client to retry
+    throw new HttpError("Failed to send password reset email. Please try again later.", 503);
+  }
+}
+
+/**
+ * Complete a password reset using the token from the email link.
+ */
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  const tokenHash = crypto.createHash("sha256").update(token.trim()).digest("hex");
+  const now = new Date();
+
+  const [resetRecord] = await db
+    .select()
+    .from(passwordResetTokens)
+    .where(
+      and(
+        eq(passwordResetTokens.tokenHash, tokenHash),
+        isNull(passwordResetTokens.consumedAt),
+        gt(passwordResetTokens.expiresAt, now),
+      ),
+    )
+    .limit(1);
+
+  if (!resetRecord) {
+    throw new HttpError("Invalid or expired password reset link.", 400);
+  }
+
+  const newHash = await bcrypt.hash(newPassword, 10);
+
+  await db
+    .update(users)
+    .set({ passwordHash: newHash, updatedAt: now })
+    .where(eq(users.id, resetRecord.userId));
+
+  await db
+    .update(passwordResetTokens)
+    .set({ consumedAt: now })
+    .where(eq(passwordResetTokens.id, resetRecord.id));
+
+  // Best-effort sync to Neon Auth
+  if (isNeonAuthAvailable()) {
+    const [userRow] = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, resetRecord.userId))
+      .limit(1);
+
+    if (userRow) {
+      try {
+        await syncPasswordToNeonAuth({
+          userId: resetRecord.userId,
+          email: userRow.email,
+          passwordHash: newHash,
+        });
+      } catch (error) {
+        console.warn(`${RESET_TOKEN_LOG_NS} reset:neon-sync-failed`, {
+          userId: resetRecord.userId,
+          message: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+  }
+
+  console.info(`${RESET_TOKEN_LOG_NS} reset:success`, { userId: resetRecord.userId });
 }

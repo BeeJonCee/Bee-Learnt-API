@@ -266,6 +266,15 @@ export const loginSchema = z.object({
   twoFactorCode: z.string().trim().length(6).optional(),
 });
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(32),
+  newPassword: z.string().min(6),
+});
+
 export const emailVerificationSendSchema = z.object({
   email: z.string().email(),
 });

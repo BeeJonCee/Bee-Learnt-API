@@ -47,6 +47,16 @@ export const emailVerificationCodes = pgTable("email_verification_codes", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Password-reset tokens (1-hour expiry, single-use)
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").references(() => users.id).notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // ── PARENT-STUDENT RELATIONSHIPS ────────────
 
 export const parentStudentLinks = pgTable("parent_student_links", {
