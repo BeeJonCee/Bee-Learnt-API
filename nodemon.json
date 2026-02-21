@@ -1,0 +1,12 @@
+{
+  "watch": ["src"],
+  "ext": "ts,json",
+  "ignore": [
+    "Education/**",
+    "node_modules/**",
+    "dist/**",
+    ".git/**",
+    "*.md"
+  ],
+  "exec": "tsx src/server.ts"
+}
