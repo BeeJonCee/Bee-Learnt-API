@@ -1,8 +1,7 @@
-import "./instrument.js";
+﻿import "./instrument.js";
 import express from "express";
 import cors from "cors";
 import swaggerUi from "swagger-ui-express";
-import * as Sentry from "@sentry/node";
 import { env } from "./config/env.js";
 import { specs } from "./config/swagger.js";
 import { authenticate } from "./core/middleware/auth.js";
@@ -10,13 +9,14 @@ import { errorHandler } from "./core/middleware/error-handler.js";
 import { notFound } from "./core/middleware/not-found.js";
 import { requestLogger } from "./core/middleware/request-logger.js";
 import { router } from "./modules/index.js";
+import { logWarn } from "./shared/utils/logger.js";
 
 const app = express();
 
-// ─── Request Logging ────────────────────────────────────────────────
+// â”€â”€â”€ Request Logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(requestLogger);
 
-// ─── CORS ──────────────────────────────────────────────────────────
+// â”€â”€â”€ CORS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const corsOrigin =
   env.corsOrigin === "*"
     ? "*"
@@ -24,14 +24,14 @@ const corsOrigin =
 
 app.use(cors({ origin: corsOrigin, credentials: env.corsOrigin !== "*" }));
 
-// ─── Body Parsing ──────────────────────────────────────────────────
+// â”€â”€â”€ Body Parsing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// ─── Swagger Documentation ─────────────────────────────────────────
+// â”€â”€â”€ Swagger Documentation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs, { explorer: true }));
 
-// ─── Health Check ──────────────────────────────────────────────────
+// â”€â”€â”€ Health Check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "bee-learnt-api" });
 });
@@ -40,24 +40,33 @@ app.get("/", (_req, res) => {
   res.json({ message: "BeeLearnt API" });
 });
 
-// ─── Sentry Debug (dev/staging) ────────────────────────────────────
+// â”€â”€â”€ Sentry Debug (dev/staging) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get("/debug-sentry", () => {
   throw new Error("Sentry test error!");
 });
 
-// ─── Authentication Middleware (sets req.user) ─────────────────────
+// â”€â”€â”€ Authentication Middleware (sets req.user) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(authenticate);
 
-// ─── API Routes ────────────────────────────────────────────────────
+// â”€â”€â”€ API Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use("/api", router);
 
-// ─── 404 Handler ───────────────────────────────────────────────────
+// â”€â”€â”€ 404 Handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(notFound);
 
-// ─── Sentry Error Handler (must be before custom errorHandler) ─────
-Sentry.setupExpressErrorHandler(app);
+// â”€â”€â”€ Sentry Error Handler (must be before custom errorHandler) â”€â”€â”€â”€â”€
+if (process.env.SENTRY_DSN) {
+  try {
+    const Sentry = await import("@sentry/node");
+    Sentry.setupExpressErrorHandler(app);
+  } catch (error) {
+    logWarn("Sentry error handler skipped because @sentry/node could not be loaded", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
-// ─── Custom Error Handler ──────────────────────────────────────────
+// â”€â”€â”€ Custom Error Handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(errorHandler);
 
 export { app };
