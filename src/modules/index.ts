@@ -14,6 +14,7 @@ import {
   moduleUnlockRoutes,
   modulesRoutes,
   resourcesRoutes,
+  rubricsRoutes,
   subjectResourcesRoutes,
   subjectsRoutes,
   userModulesRoutes,
@@ -46,6 +47,7 @@ router.use("/subjects", subjectsRoutes);
 router.use("/modules", modulesRoutes);
 router.use("/lessons", lessonsRoutes);
 router.use("/assignments", assignmentsRoutes);
+router.use("/rubrics", rubricsRoutes);
 router.use("/resources", resourcesRoutes);
 router.use("/quizzes", quizzesRoutes);
 router.use("/assessments", assessmentsRoutes);

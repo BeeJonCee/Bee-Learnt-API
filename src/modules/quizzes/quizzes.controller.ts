@@ -41,6 +41,11 @@ function parseJsonString(value: string): unknown {
   }
 }
 
+function tryParseJson(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  return parseJsonString(value);
+}
+
 function extractAnswerValue(value: unknown): unknown {
   if (typeof value === "string") {
     const parsed = parseJsonString(value);
@@ -74,58 +79,113 @@ function toDisplayText(value: unknown): string {
   return String(value);
 }
 
+function readOptionText(option: Record<string, unknown>): string {
+  const direct = [
+    option.text,
+    option.label,
+    option.value,
+    option.optionText,
+    option.option_text,
+    option.option,
+    option.content,
+    option.answer,
+    option.title,
+    option.name,
+    option.description,
+  ];
+
+  for (const candidate of direct) {
+    const text = toDisplayText(candidate).trim();
+    if (text.length > 0) return text;
+  }
+
+  return "";
+}
+
+function readOptionImageUrl(option: Record<string, unknown>): string | undefined {
+  const candidate =
+    option.imageUrl ?? option.image_url ?? option.image ?? option.src ?? option.url;
+  if (typeof candidate !== "string") return undefined;
+  const trimmed = candidate.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function looksLikeImageReference(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith("data:image/")) return true;
+  const withoutQuery = trimmed.split("?")[0]?.split("#")[0] ?? trimmed;
+  return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(withoutQuery);
+}
+
+function imageLabelFromUrl(url: string): string {
+  const withoutHash = url.split("#")[0] ?? url;
+  const withoutQuery = withoutHash.split("?")[0] ?? withoutHash;
+  const segment = withoutQuery.split("/").filter(Boolean).pop() ?? "";
+  if (!segment) return "";
+
+  try {
+    const decoded = decodeURIComponent(segment);
+    return decoded
+      .replace(/\.[a-z0-9]{2,5}$/i, "")
+      .replace(/[_-]+/g, " ")
+      .trim();
+  } catch {
+    return segment
+      .replace(/\.[a-z0-9]{2,5}$/i, "")
+      .replace(/[_-]+/g, " ")
+      .trim();
+  }
+}
+
 function parseOptions(raw: unknown): QuestionOption[] {
-  const normalizedRaw =
-    typeof raw === "string"
-      ? (() => {
-          const trimmed = raw.trim();
-          if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return raw;
-          try {
-            return JSON.parse(trimmed) as unknown;
-          } catch {
-            return raw;
-          }
-        })()
-      : raw;
+  const normalizedRaw = tryParseJson(raw);
 
   const parseOptionEntry = (
     entry: unknown,
     index: number,
     explicitId?: string
   ): QuestionOption => {
+    const normalized = tryParseJson(entry);
+
+    if (typeof normalized === "string") {
+      const trimmed = normalized.trim();
+      if (looksLikeImageReference(trimmed)) {
+        return {
+          id: explicitId ?? String(index),
+          text:
+            imageLabelFromUrl(trimmed) ||
+            (explicitId ? String(explicitId) : `Option ${index + 1}`),
+        };
+      }
+    }
+
     if (
-      typeof entry === "string" ||
-      typeof entry === "number" ||
-      typeof entry === "boolean"
+      typeof normalized === "string" ||
+      typeof normalized === "number" ||
+      typeof normalized === "boolean"
     ) {
       return {
         id: explicitId ?? String(index),
-        text: toDisplayText(entry) || `Option ${index + 1}`,
+        text: toDisplayText(normalized) || `Option ${index + 1}`,
       };
     }
 
-    if (entry && typeof entry === "object" && !Array.isArray(entry)) {
-      const option = entry as Record<string, unknown>;
+    if (normalized && typeof normalized === "object" && !Array.isArray(normalized)) {
+      const option = normalized as Record<string, unknown>;
+      const imageUrl = readOptionImageUrl(option);
       const id = String(option.id ?? option.key ?? option.code ?? explicitId ?? index);
       const text =
-        toDisplayText(
-          option.text ??
-            option.label ??
-            option.value ??
-            option.optionText ??
-            option.option_text ??
-            option.option ??
-            option.content ??
-            option.answer ??
-            option.title ??
-            option.name
-        ) || `Option ${index + 1}`;
+        readOptionText(option) ||
+        (imageUrl ? imageLabelFromUrl(imageUrl) : "") ||
+        (explicitId ? String(explicitId) : "") ||
+        `Option ${index + 1}`;
       return { id, text };
     }
 
     return {
       id: explicitId ?? String(index),
-      text: toDisplayText(entry) || `Option ${index + 1}`,
+      text: toDisplayText(normalized) || `Option ${index + 1}`,
     };
   };
 
@@ -166,6 +226,22 @@ function parseOptions(raw: unknown): QuestionOption[] {
 }
 
 function optionLabel(value: unknown, optionsRaw: unknown): string {
+  if (value === null || value === undefined) return "";
+
+  if (typeof value === "object" && !Array.isArray(value)) {
+    const payload = value as Record<string, unknown>;
+    const candidate =
+      payload.id ??
+      payload.key ??
+      payload.code ??
+      payload.value ??
+      payload.answer;
+    if (candidate !== undefined && candidate !== value) {
+      const resolved = optionLabel(candidate, optionsRaw);
+      if (resolved.trim().length > 0) return resolved;
+    }
+  }
+
   const token = toDisplayText(value).trim();
   if (!token) return "";
 

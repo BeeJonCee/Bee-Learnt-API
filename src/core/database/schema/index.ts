@@ -55,6 +55,9 @@ export * from "./nsc-papers.schema.js";
 // Rubrics
 export * from "./rubrics.schema.js";
 
+// Assignment Submissions (Depends on content + rubrics)
+export * from "./submissions.schema.js";
+
 // Subject Resources (Depends on content + curriculum)
 export * from "./subject-resources.schema.js";
 

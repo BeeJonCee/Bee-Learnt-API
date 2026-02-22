@@ -484,6 +484,7 @@ export async function listQuizQuestions(quizId: number) {
       quizId: quizQuestions.quizId,
       type: quizQuestions.type,
       questionText: quizQuestions.questionText,
+      imageUrl: quizQuestions.imageUrl,
       options: quizQuestions.options,
       points: quizQuestions.points,
     })
@@ -498,6 +499,7 @@ export async function listQuizQuestionsForReview(quizId: number) {
       quizId: quizQuestions.quizId,
       type: quizQuestions.type,
       questionText: quizQuestions.questionText,
+      imageUrl: quizQuestions.imageUrl,
       options: quizQuestions.options,
       correctAnswer: quizQuestions.correctAnswer,
       explanation: quizQuestions.explanation,

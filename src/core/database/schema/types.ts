@@ -29,3 +29,9 @@ export interface RubricCriterion {
   maxScore: number;
   levels: { score: number; descriptor: string }[];
 }
+
+export interface RubricScore {
+  criterionName: string;
+  score: number;
+  comment?: string;
+}
