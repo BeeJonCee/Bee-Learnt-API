@@ -1,4 +1,4 @@
-import { and, count, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db } from "../../core/database/index.js";
 import {
@@ -134,7 +134,15 @@ export async function getPaper(id: number) {
             overridePoints: assessmentQuestions.overridePoints,
             questionBankItemId: assessmentQuestions.questionBankItemId,
             questionText: questionBankItems.questionText,
+            questionHtml: questionBankItems.questionHtml,
+            imageUrl: questionBankItems.imageUrl,
+            options: questionBankItems.options,
             type: questionBankItems.type,
+            answerFormat: questionBankItems.answerFormat,
+            rubricCriteria: questionBankItems.rubricCriteria,
+            practicalConfig: questionBankItems.practicalConfig,
+            modelAnswer: questionBankItems.modelAnswer,
+            memo: questionBankItems.memo,
             points: questionBankItems.points,
             difficulty: questionBankItems.difficulty,
           })
@@ -196,6 +204,13 @@ export async function publishPaper(id: number) {
     .where(eq(assessmentQuestions.assessmentId, id));
   if (Number(qCount) === 0) {
     throw new HttpError("Paper must have at least one question before publishing", 400);
+  }
+  const [{ value: assignmentCount }] = await db
+    .select({ value: count() })
+    .from(paperAssignments)
+    .where(eq(paperAssignments.assessmentId, id));
+  if (Number(assignmentCount) === 0) {
+    throw new HttpError("Paper must be assigned to at least one student before publishing", 400);
   }
 
   const [updated] = await db
@@ -390,17 +405,101 @@ export async function assignPaper(
   assignedBy: string,
 ) {
   const paper = await getPaperOrThrow(paperId);
-  if (paper.status === "draft") {
-    throw new HttpError("Publish the paper before assigning it", 400);
+  if (paper.status === "archived") {
+    throw new HttpError("Cannot assign an archived paper", 400);
   }
 
-  const values = input.studentIds.map((studentId) => ({
+  const tokens = Array.from(
+    new Set(
+      (input.studentIds ?? [])
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+  if (tokens.length === 0) {
+    throw new HttpError("At least one student ID or email is required", 400);
+  }
+
+  const idTokens = tokens.filter((token) => !token.includes("@"));
+  const emailTokens = tokens.filter((token) => token.includes("@"));
+  const normalizedEmailTokens = Array.from(
+    new Set(emailTokens.map((token) => token.toLowerCase())),
+  );
+
+  const lookupConditions = [];
+  if (idTokens.length > 0) {
+    lookupConditions.push(inArray(users.id, idTokens));
+  }
+  if (emailTokens.length > 0) {
+    lookupConditions.push(inArray(users.email, emailTokens));
+  }
+  if (normalizedEmailTokens.length > 0) {
+    lookupConditions.push(inArray(users.email, normalizedEmailTokens));
+  }
+
+  const matchedUsers =
+    lookupConditions.length > 0
+      ? await db
+          .select({ id: users.id, email: users.email })
+          .from(users)
+          .where(or(...lookupConditions))
+      : [];
+
+  const userIdById = new Map(matchedUsers.map((u) => [u.id, u.id]));
+  const userIdByEmail = new Map(
+    matchedUsers.map((u) => [u.email.toLowerCase(), u.id]),
+  );
+
+  const unresolved: string[] = [];
+  const resolvedStudentIds = Array.from(
+    new Set(
+      tokens
+        .map((token) => {
+          if (userIdById.has(token)) {
+            return userIdById.get(token)!;
+          }
+          return userIdByEmail.get(token.toLowerCase()) ?? null;
+        })
+        .filter((value): value is string => {
+          if (value) return true;
+          return false;
+        }),
+    ),
+  );
+
+  for (const token of tokens) {
+    if (userIdById.has(token) || userIdByEmail.has(token.toLowerCase())) {
+      continue;
+    }
+    unresolved.push(token);
+  }
+
+  if (unresolved.length > 0) {
+    throw new HttpError(
+      `Could not resolve student ID/email: ${unresolved.join(", ")}`,
+      400,
+    );
+  }
+
+  const openAt = input.openAt ? new Date(input.openAt) : undefined;
+  const closeAt = input.closeAt ? new Date(input.closeAt) : undefined;
+  if (openAt && Number.isNaN(openAt.getTime())) {
+    throw new HttpError("openAt must be a valid datetime", 400);
+  }
+  if (closeAt && Number.isNaN(closeAt.getTime())) {
+    throw new HttpError("closeAt must be a valid datetime", 400);
+  }
+  if (openAt && closeAt && openAt > closeAt) {
+    throw new HttpError("openAt must be before closeAt", 400);
+  }
+
+  const values = resolvedStudentIds.map((studentId) => ({
     assessmentId: paperId,
     studentId,
     assignedBy,
-    openAt: input.openAt ? new Date(input.openAt) : undefined,
-    closeAt: input.closeAt ? new Date(input.closeAt) : undefined,
-    maxAttempts: input.maxAttempts ?? 1,
+    openAt,
+    closeAt,
+    maxAttempts: Math.max(1, input.maxAttempts ?? 1),
   }));
 
   const inserted = await db
@@ -495,6 +594,11 @@ export async function getSubmission(paperId: number, attemptId: string) {
       questionText: questionBankItems.questionText,
       type: questionBankItems.type,
       options: questionBankItems.options,
+      answerFormat: questionBankItems.answerFormat,
+      rubricCriteria: questionBankItems.rubricCriteria,
+      practicalConfig: questionBankItems.practicalConfig,
+      modelAnswer: questionBankItems.modelAnswer,
+      memo: questionBankItems.memo,
       correctAnswer: questionBankItems.correctAnswer,
       explanation: questionBankItems.explanation,
       points: questionBankItems.points,
@@ -540,6 +644,33 @@ export async function markAnswer(
 
 export async function finalizeMarking(paperId: number, attemptId: string, gradedBy: string) {
   await getPaperOrThrow(paperId);
+
+  const [attempt] = await db
+    .select()
+    .from(assessmentAttempts)
+    .where(
+      and(
+        eq(assessmentAttempts.id, attemptId),
+        eq(assessmentAttempts.assessmentId, paperId),
+      ),
+    );
+  if (!attempt) throw new HttpError("Submission not found", 404);
+
+  const [{ value: unmarkedCount }] = await db
+    .select({ value: count() })
+    .from(attemptAnswers)
+    .where(
+      and(
+        eq(attemptAnswers.attemptId, attemptId),
+        isNull(attemptAnswers.score),
+      ),
+    );
+  if (Number(unmarkedCount) > 0) {
+    throw new HttpError(
+      `Cannot finalize marking: ${unmarkedCount} answer(s) are still unmarked`,
+      400,
+    );
+  }
 
   // Tally scores
   const answers = await db
@@ -627,6 +758,21 @@ export async function startPaper(paperId: number, studentId: string) {
   }
   if (assignment.closeAt && now > assignment.closeAt) {
     throw new HttpError("This paper is closed", 400);
+  }
+
+  const [activeAttempt] = await db
+    .select()
+    .from(assessmentAttempts)
+    .where(
+      and(
+        eq(assessmentAttempts.assessmentId, paperId),
+        eq(assessmentAttempts.userId, studentId),
+        eq(assessmentAttempts.status, "in_progress"),
+      ),
+    )
+    .limit(1);
+  if (activeAttempt) {
+    return activeAttempt;
   }
 
   // Check attempt count

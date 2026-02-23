@@ -505,6 +505,8 @@ function normalizeAssessmentAnswer(
       return { type: "blanks", value: values.length > 0 ? values : [""] };
     }
     case "essay":
+    case "long_answer":
+    case "code_practical":
     case "short_answer":
     default:
       return { type: "text", value: normalizeStringValue(extractAnswerValue(answer)) };
@@ -583,6 +585,14 @@ function normalizeCorrectAnswer(
         value: values,
         caseSensitive,
         exactMatch,
+      };
+    }
+    case "long_answer":
+    case "code_practical": {
+      const values = normalizeStringArray(rawValue);
+      return {
+        type: "text",
+        value: values,
       };
     }
     default:
@@ -683,6 +693,11 @@ export async function getAssessmentDetail(id: number) {
       imageUrl: questionBankItems.imageUrl,
       options: questionBankItems.options,
       correctAnswer: questionBankItems.correctAnswer,
+      answerFormat: questionBankItems.answerFormat,
+      rubricCriteria: questionBankItems.rubricCriteria,
+      practicalConfig: questionBankItems.practicalConfig,
+      modelAnswer: questionBankItems.modelAnswer,
+      memo: questionBankItems.memo,
       explanation: questionBankItems.explanation,
       points: questionBankItems.points,
       timeLimitSeconds: questionBankItems.timeLimitSeconds,
@@ -1064,6 +1079,11 @@ export async function submitAttempt(input: { attemptId: string; userId: string }
       options: questionBankItems.options,
       points: questionBankItems.points,
       correctAnswer: questionBankItems.correctAnswer,
+      answerFormat: questionBankItems.answerFormat,
+      rubricCriteria: questionBankItems.rubricCriteria,
+      practicalConfig: questionBankItems.practicalConfig,
+      modelAnswer: questionBankItems.modelAnswer,
+      memo: questionBankItems.memo,
       explanation: questionBankItems.explanation,
       solutionSteps: questionBankItems.solutionSteps,
       topicId: questionBankItems.topicId,
@@ -1127,9 +1147,11 @@ export async function submitAttempt(input: { attemptId: string; userId: string }
       continue;
     }
 
-    // Essay and complex short answer need manual grading
+    // Subjective questions need manual grading.
     if (
       question.type === "essay" ||
+      question.type === "long_answer" ||
+      question.type === "code_practical" ||
       (question.type === "short_answer" &&
         !hasUsableCorrectAnswer(normalizedCorrectAnswer))
     ) {
@@ -1153,6 +1175,11 @@ export async function submitAttempt(input: { attemptId: string; userId: string }
       imageUrl: question.imageUrl,
       options: question.options,
       correctAnswer: normalizedCorrectAnswer,
+      answerFormat: question.answerFormat,
+      rubricCriteria: question.rubricCriteria,
+      practicalConfig: question.practicalConfig,
+      modelAnswer: question.modelAnswer,
+      memo: question.memo,
       explanation: question.explanation,
       solutionSteps: question.solutionSteps,
       points,

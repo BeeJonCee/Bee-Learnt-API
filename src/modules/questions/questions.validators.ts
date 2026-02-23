@@ -150,11 +150,37 @@ export const questionTypeSchema = z.enum([
   "true_false",
   "short_answer",
   "essay",
+  "long_answer",
   "numeric",
   "matching",
   "ordering",
   "fill_in_blank",
+  "code_practical",
 ]);
+
+export const shortAnswerFormatSchema = z.enum([
+  "one_word",
+  "number",
+  "short_sentence",
+  "sql_snippet",
+  "code_line",
+  "paragraph",
+  "code_block",
+]);
+
+export const rubricCriterionSchema = z.object({
+  criterion: z.string().min(1).max(300),
+  marks: z.number().positive(),
+  description: z.string().max(2000).optional(),
+});
+
+export const practicalConfigSchema = z.object({
+  mode: z.enum(["editor", "file_upload", "both"]).default("editor"),
+  language: z.string().max(40).optional(),
+  allowFileUpload: z.boolean().optional(),
+  acceptedFileExtensions: z.array(z.string().max(15)).max(20).optional(),
+  starterCode: z.string().max(12000).optional(),
+});
 
 export const questionDifficultySchema = z.enum(["easy", "medium", "hard", "adaptive"]);
 
@@ -169,6 +195,7 @@ export const questionSourceSchema = z.enum([
 
 export const createQuestionBankItemSchema = z.object({
   subjectId: z.number().int().positive(),
+  moduleId: z.number().int().positive().optional(),
   topicId: z.number().int().positive().optional(),
   learningOutcomeId: z.number().int().positive().optional(),
   type: questionTypeSchema,
@@ -177,7 +204,12 @@ export const createQuestionBankItemSchema = z.object({
   questionHtml: z.string().optional(),
   imageUrl: z.string().url().optional(),
   options: z.array(questionOptionSchema).optional(),
-  correctAnswer: correctAnswerSchema,
+  correctAnswer: correctAnswerSchema.optional(),
+  answerFormat: shortAnswerFormatSchema.optional(),
+  rubricCriteria: z.array(rubricCriterionSchema).optional(),
+  practicalConfig: practicalConfigSchema.optional(),
+  modelAnswer: z.string().max(12000).optional(),
+  memo: z.string().max(12000).optional(),
   explanation: z.string().max(2000).optional(),
   solutionSteps: z.array(z.string()).optional(),
   points: z.number().int().positive().default(1),
@@ -248,12 +280,16 @@ export const submitAnswerSchema = z.object({
 
 export const questionBankFiltersSchema = z.object({
   subjectId: z.number().int().positive().optional(),
+  moduleId: z.number().int().positive().optional(),
   topicId: z.number().int().positive().optional(),
   difficulty: questionDifficultySchema.optional(),
   type: questionTypeSchema.optional(),
+  answerFormat: shortAnswerFormatSchema.optional(),
   source: questionSourceSchema.optional(),
   tags: z.string().optional(), // Comma-separated
   search: z.string().optional(),
+  isActive: z.boolean().optional(),
+  offset: z.number().int().nonnegative().optional(),
   page: z.number().int().positive().default(1),
   limit: z.number().int().positive().max(100).default(20),
 });

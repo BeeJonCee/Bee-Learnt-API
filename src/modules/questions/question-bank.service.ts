@@ -4,10 +4,27 @@ import { questionBankItems, subjects, modules } from "../../core/database/schema
 
 export type QuestionType =
   | "multiple_choice"
+  | "multi_select"
+  | "true_false"
   | "short_answer"
-  | "essay";
+  | "essay"
+  | "long_answer"
+  | "numeric"
+  | "matching"
+  | "ordering"
+  | "fill_in_blank"
+  | "code_practical";
 
 export type QuestionDifficulty = "easy" | "medium" | "hard" | "adaptive";
+
+export type ShortAnswerFormat =
+  | "one_word"
+  | "number"
+  | "short_sentence"
+  | "sql_snippet"
+  | "code_line"
+  | "paragraph"
+  | "code_block";
 
 export type QuestionSource =
   | "manual"
@@ -25,15 +42,38 @@ export interface QuestionOption {
 }
 
 export interface CorrectAnswer {
-  type: "single" | "multi" | "text" | "numeric" | "pairs" | "order";
-  value: string | string[] | number | MatchPair[] | string[];
+  type:
+    | "single"
+    | "multi"
+    | "boolean"
+    | "text"
+    | "numeric"
+    | "pairs"
+    | "order"
+    | "blanks";
+  value: unknown;
   tolerance?: number;
   caseSensitive?: boolean;
+  exactMatch?: boolean;
 }
 
 export interface MatchPair {
   left: string;
   right: string;
+}
+
+export interface RubricCriterion {
+  criterion: string;
+  marks: number;
+  description?: string;
+}
+
+export interface PracticalConfig {
+  mode?: "editor" | "file_upload" | "both";
+  language?: string;
+  allowFileUpload?: boolean;
+  acceptedFileExtensions?: string[];
+  starterCode?: string;
 }
 
 type OptionDebugItem = {
@@ -53,6 +93,7 @@ type ListQuestionsInput = {
   moduleId?: number;
   difficulty?: QuestionDifficulty;
   type?: QuestionType;
+  answerFormat?: ShortAnswerFormat;
   source?: QuestionSource;
   tags?: string[];
   search?: string;
@@ -71,6 +112,11 @@ type CreateQuestionInput = {
   imageUrl?: string;
   options?: QuestionOption[];
   correctAnswer?: CorrectAnswer;
+  answerFormat?: ShortAnswerFormat;
+  rubricCriteria?: RubricCriterion[];
+  practicalConfig?: PracticalConfig;
+  modelAnswer?: string;
+  memo?: string;
   explanation?: string;
   solutionSteps?: string[];
   points?: number;
@@ -265,6 +311,9 @@ export async function listQuestions(input: ListQuestionsInput) {
   if (input.type) {
     conditions.push(eq(questionBankItems.type, input.type));
   }
+  if (input.answerFormat) {
+    conditions.push(eq(questionBankItems.answerFormat, input.answerFormat));
+  }
   if (input.source) {
     conditions.push(eq(questionBankItems.source, input.source));
   }
@@ -300,6 +349,11 @@ export async function listQuestions(input: ListQuestionsInput) {
       questionHtml: questionBankItems.questionHtml,
       imageUrl: questionBankItems.imageUrl,
       options: questionBankItems.options,
+      answerFormat: questionBankItems.answerFormat,
+      rubricCriteria: questionBankItems.rubricCriteria,
+      practicalConfig: questionBankItems.practicalConfig,
+      modelAnswer: questionBankItems.modelAnswer,
+      memo: questionBankItems.memo,
       points: questionBankItems.points,
       timeLimitSeconds: questionBankItems.timeLimitSeconds,
       source: questionBankItems.source,
@@ -354,6 +408,11 @@ export async function getQuestionById(id: number) {
       imageUrl: questionBankItems.imageUrl,
       options: questionBankItems.options,
       correctAnswer: questionBankItems.correctAnswer,
+      answerFormat: questionBankItems.answerFormat,
+      rubricCriteria: questionBankItems.rubricCriteria,
+      practicalConfig: questionBankItems.practicalConfig,
+      modelAnswer: questionBankItems.modelAnswer,
+      memo: questionBankItems.memo,
       explanation: questionBankItems.explanation,
       solutionSteps: questionBankItems.solutionSteps,
       points: questionBankItems.points,
@@ -435,6 +494,11 @@ export async function createQuestion(input: CreateQuestionInput, createdBy: stri
       imageUrl: input.imageUrl ?? null,
       options: (input.options as any) ?? null,
       correctAnswer: (input.correctAnswer as any) ?? null,
+      answerFormat: input.answerFormat ?? null,
+      rubricCriteria: (input.rubricCriteria as any) ?? null,
+      practicalConfig: (input.practicalConfig as any) ?? null,
+      modelAnswer: input.modelAnswer ?? null,
+      memo: input.memo ?? null,
       explanation: input.explanation ?? null,
       solutionSteps: input.solutionSteps ?? [],
       points: input.points ?? 1,
@@ -464,6 +528,11 @@ export async function updateQuestion(id: number, input: UpdateQuestionInput) {
   if (input.imageUrl !== undefined) updateData.imageUrl = input.imageUrl;
   if (input.options !== undefined) updateData.options = input.options;
   if (input.correctAnswer !== undefined) updateData.correctAnswer = input.correctAnswer;
+  if (input.answerFormat !== undefined) updateData.answerFormat = input.answerFormat;
+  if (input.rubricCriteria !== undefined) updateData.rubricCriteria = input.rubricCriteria;
+  if (input.practicalConfig !== undefined) updateData.practicalConfig = input.practicalConfig;
+  if (input.modelAnswer !== undefined) updateData.modelAnswer = input.modelAnswer;
+  if (input.memo !== undefined) updateData.memo = input.memo;
   if (input.explanation !== undefined) updateData.explanation = input.explanation;
   if (input.solutionSteps !== undefined) updateData.solutionSteps = input.solutionSteps;
   if (input.points !== undefined) updateData.points = input.points;
@@ -526,6 +595,11 @@ export async function getRandomQuestions(input: RandomQuestionsInput) {
       questionHtml: questionBankItems.questionHtml,
       imageUrl: questionBankItems.imageUrl,
       options: questionBankItems.options,
+      answerFormat: questionBankItems.answerFormat,
+      rubricCriteria: questionBankItems.rubricCriteria,
+      practicalConfig: questionBankItems.practicalConfig,
+      modelAnswer: questionBankItems.modelAnswer,
+      memo: questionBankItems.memo,
       points: questionBankItems.points,
       timeLimitSeconds: questionBankItems.timeLimitSeconds,
       tags: questionBankItems.tags,
@@ -554,6 +628,11 @@ export async function bulkCreateQuestions(
     imageUrl: q.imageUrl ?? null,
     options: (q.options as any) ?? null,
     correctAnswer: (q.correctAnswer as any) ?? null,
+    answerFormat: q.answerFormat ?? null,
+    rubricCriteria: (q.rubricCriteria as any) ?? null,
+    practicalConfig: (q.practicalConfig as any) ?? null,
+    modelAnswer: q.modelAnswer ?? null,
+    memo: q.memo ?? null,
     explanation: q.explanation ?? null,
     solutionSteps: q.solutionSteps ?? [],
     points: q.points ?? 1,
@@ -590,6 +669,8 @@ export async function getQuestionStats(subjectId?: number) {
       multipleChoice: sql<number>`count(*) filter (where ${questionBankItems.type} = 'multiple_choice')::int`,
       shortAnswer: sql<number>`count(*) filter (where ${questionBankItems.type} = 'short_answer')::int`,
       essay: sql<number>`count(*) filter (where ${questionBankItems.type} = 'essay')::int`,
+      longAnswer: sql<number>`count(*) filter (where ${questionBankItems.type} = 'long_answer')::int`,
+      codePractical: sql<number>`count(*) filter (where ${questionBankItems.type} = 'code_practical')::int`,
     })
     .from(questionBankItems)
     .where(baseQuery);

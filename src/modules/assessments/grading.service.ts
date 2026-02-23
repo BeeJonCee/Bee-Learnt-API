@@ -17,8 +17,12 @@ export class GradingService {
    * Grade a user's answer against a question
    */
   gradeAnswer(question: QuestionBankItem, userAnswer: UserAnswer): GradingResult {
-    // Subjective questions (essay, short answer with fuzzy matching) need manual grading
-    if (question.type === "essay") {
+    // Subjective questions require manual grading.
+    if (
+      question.type === "essay" ||
+      question.type === "long_answer" ||
+      question.type === "code_practical"
+    ) {
       return this.requiresManualGrading(question.points);
     }
 

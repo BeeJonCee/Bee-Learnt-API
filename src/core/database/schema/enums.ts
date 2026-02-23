@@ -25,10 +25,12 @@ export const quizTypeEnum = pgEnum("quiz_question_type", [
   "true_false",
   "short_answer",
   "essay",
+  "long_answer",
   "numeric",
   "matching",
   "ordering",
   "fill_in_blank",
+  "code_practical",
 ]);
 
 // ── ASSIGNMENT ──────────────────────────────

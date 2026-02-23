@@ -13,10 +13,21 @@ export type QuestionType =
   | "true_false"
   | "short_answer"
   | "essay"
+  | "long_answer"
   | "numeric"
   | "matching"
   | "ordering"
-  | "fill_in_blank";
+  | "fill_in_blank"
+  | "code_practical";
+
+export type ShortAnswerFormat =
+  | "one_word"
+  | "number"
+  | "short_sentence"
+  | "sql_snippet"
+  | "code_line"
+  | "paragraph"
+  | "code_block";
 
 export type QuestionDifficulty = "easy" | "medium" | "hard" | "adaptive";
 
@@ -169,6 +180,21 @@ export interface QuestionBankItem {
   imageUrl?: string;
   options?: QuestionOption[];
   correctAnswer: CorrectAnswer;
+  answerFormat?: ShortAnswerFormat;
+  rubricCriteria?: Array<{
+    criterion: string;
+    marks: number;
+    description?: string;
+  }>;
+  practicalConfig?: {
+    mode?: "editor" | "file_upload" | "both";
+    language?: string;
+    allowFileUpload?: boolean;
+    acceptedFileExtensions?: string[];
+    starterCode?: string;
+  };
+  modelAnswer?: string;
+  memo?: string;
   explanation?: string;
   solutionSteps?: string[];
   points: number;
@@ -266,7 +292,7 @@ export function isObjectiveQuestion(type: QuestionType): boolean {
 }
 
 export function isSubjectiveQuestion(type: QuestionType): boolean {
-  return ["short_answer", "essay"].includes(type);
+  return ["short_answer", "essay", "long_answer", "code_practical"].includes(type);
 }
 
 export function requiresManualGrading(type: QuestionType): boolean {

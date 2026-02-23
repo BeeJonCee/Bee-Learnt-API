@@ -11,6 +11,7 @@ import { migrate as migrateAssessments } from "./seed/migrate-assessments.js";
 import { migrate as migrateSeedAlignment } from "./seed/migrate-seed-alignment.js";
 import { migrate as migrateNscCurriculum } from "./seed/migrate-nsc-curriculum.js";
 import { migrate as migrateSubjectResources } from "./seed/migrate-subject-resources.js";
+import { migrate as migrateQuestionBankTypes } from "./seed/migrate-question-bank-types.js";
 import { migrate as migrateManualPapers } from "./seed/migrate-manual-papers.js";
 
 const logger = createLogger("bootstrap");
@@ -31,6 +32,7 @@ const migrations: { name: string; fn: () => Promise<void> }[] = [
   { name: "seed-alignment",        fn: migrateSeedAlignment },
   { name: "nsc-curriculum",        fn: migrateNscCurriculum },
   { name: "subject-resources",     fn: migrateSubjectResources },
+  { name: "question-bank-types",   fn: migrateQuestionBankTypes },
   { name: "manual-papers",         fn: migrateManualPapers },
 ];
 

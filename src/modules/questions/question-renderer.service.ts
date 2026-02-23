@@ -33,6 +33,9 @@ export class QuestionRendererService {
       questionText: question.questionText,
       questionHtml: question.questionHtml,
       imageUrl: question.imageUrl,
+      answerFormat: question.answerFormat,
+      practicalConfig: question.practicalConfig,
+      rubricCriteria: question.rubricCriteria,
       points: showPoints ? question.points : undefined,
       timeLimitSeconds: showTimeLimit ? question.timeLimitSeconds : undefined,
     };
@@ -142,6 +145,8 @@ export class QuestionRendererService {
 
       case "short_answer":
       case "essay":
+      case "long_answer":
+      case "code_practical":
         if (ans.type !== "text") {
           return { valid: false, error: `Expected type 'text', got '${ans.type}'` };
         }
