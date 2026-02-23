@@ -279,19 +279,19 @@ export const submitAnswerSchema = z.object({
 // ══════════════════════════════════════════════════════════
 
 export const questionBankFiltersSchema = z.object({
-  subjectId: z.number().int().positive().optional(),
-  moduleId: z.number().int().positive().optional(),
-  topicId: z.number().int().positive().optional(),
+  subjectId: z.coerce.number().int().positive().optional(),
+  moduleId: z.coerce.number().int().positive().optional(),
+  topicId: z.coerce.number().int().positive().optional(),
   difficulty: questionDifficultySchema.optional(),
   type: questionTypeSchema.optional(),
   answerFormat: shortAnswerFormatSchema.optional(),
   source: questionSourceSchema.optional(),
   tags: z.string().optional(), // Comma-separated
   search: z.string().optional(),
-  isActive: z.boolean().optional(),
-  offset: z.number().int().nonnegative().optional(),
-  page: z.number().int().positive().default(1),
-  limit: z.number().int().positive().max(100).default(20),
+  isActive: z.coerce.boolean().optional(),
+  offset: z.coerce.number().int().nonnegative().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
 export const assessmentFiltersSchema = z.object({
