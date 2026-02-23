@@ -6,11 +6,13 @@ export async function migrate() {
   await db.execute(sql`
     DO $$
     BEGIN
-      CREATE TYPE content_audience AS ENUM ('ALL', 'STUDENT', 'PARENT', 'ADMIN');
+      CREATE TYPE content_audience AS ENUM ('ALL', 'STUDENT', 'PARENT', 'ADMIN', 'TUTOR');
     EXCEPTION
       WHEN duplicate_object THEN NULL;
     END $$;
   `);
+
+  await db.execute(sql`ALTER TYPE content_audience ADD VALUE IF NOT EXISTS 'TUTOR';`);
 
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS announcements (

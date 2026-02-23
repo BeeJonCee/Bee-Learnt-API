@@ -2,11 +2,13 @@ import "dotenv/config";
 import { and, eq } from "drizzle-orm";
 import { db } from "../core/database/index.js";
 import {
+  announcements,
   assignments,
   assessmentQuestions,
   assessmentSections,
   assessments,
   badges,
+  events,
   questionBankItems,
   lessons,
   moduleChecklistItems,
@@ -27,6 +29,7 @@ import type {
 } from "./types.js";
 
 const MIN_QUIZ_QUESTION_COUNT = 20;
+type ContentAudience = "ALL" | "STUDENT" | "PARENT" | "ADMIN" | "TUTOR";
 
 const moduleSeedBySubjectAndTitle = new Map<string, ModuleSeed>([
   ...itModules.map((seed) => [`${itSubject.name}::${seed.title}`, seed] as const),
@@ -56,6 +59,13 @@ function buildDefaultAssignmentTemplates(moduleTitle: string): AssignmentTemplat
       priority: "medium",
     },
   ];
+}
+
+function offsetDate(daysOffset: number, hour: number, minute = 0) {
+  const value = new Date();
+  value.setDate(value.getDate() + daysOffset);
+  value.setHours(hour, minute, 0, 0);
+  return value;
 }
 
 async function upsertSubject(seed: SubjectSeed) {
@@ -255,6 +265,167 @@ async function ensureBadges() {
   }
 }
 
+export async function seedAnnouncementsAndEvents() {
+  const announcementSeeds: Array<{
+    title: string;
+    body: string;
+    audience: ContentAudience;
+    pinned?: boolean;
+    publishedAt: Date;
+  }> = [
+    {
+      title: "Welcome to BeeLearnt",
+      body: "Your dashboards now include role-specific updates, events, and study prompts.",
+      audience: "ALL",
+      pinned: true,
+      publishedAt: offsetDate(-1, 7),
+    },
+    {
+      title: "Weekly focus: consistency beats cramming",
+      body: "Plan 30-45 minute sessions each day this week and track your progress in the dashboard.",
+      audience: "ALL",
+      publishedAt: offsetDate(-2, 8),
+    },
+    {
+      title: "Student challenge: score 80%+ in your next quiz",
+      body: "Complete one module quiz and review explanations for every missed question.",
+      audience: "STUDENT",
+      publishedAt: offsetDate(-1, 15),
+    },
+    {
+      title: "Parent snapshot is live",
+      body: "Open the Parent dashboard for recent activity, assignment status, and study streak summaries.",
+      audience: "PARENT",
+      publishedAt: offsetDate(-1, 14),
+    },
+    {
+      title: "Tutor planning checklist updated",
+      body: "Use weekly scheduling tools to group learners by topic mastery before your next session.",
+      audience: "TUTOR",
+      publishedAt: offsetDate(-1, 13),
+    },
+    {
+      title: "Admin review queue refreshed",
+      body: "New moderation and content review items are ready in Admin analytics and reports.",
+      audience: "ADMIN",
+      publishedAt: offsetDate(-1, 12),
+    },
+  ];
+
+  for (const seed of announcementSeeds) {
+    const [existing] = await db
+      .select({ id: announcements.id })
+      .from(announcements)
+      .where(and(eq(announcements.title, seed.title), eq(announcements.audience, seed.audience)))
+      .limit(1);
+
+    if (existing) {
+      await db
+        .update(announcements)
+        .set({
+          body: seed.body,
+          pinned: seed.pinned ?? false,
+          publishedAt: seed.publishedAt,
+          updatedAt: new Date(),
+        })
+        .where(eq(announcements.id, existing.id));
+      continue;
+    }
+
+    await db.insert(announcements).values({
+      title: seed.title,
+      body: seed.body,
+      audience: seed.audience,
+      pinned: seed.pinned ?? false,
+      publishedAt: seed.publishedAt,
+    });
+  }
+
+  const eventSeeds: Array<{
+    title: string;
+    description: string;
+    startAt: Date;
+    endAt?: Date | null;
+    allDay?: boolean;
+    location?: string | null;
+    audience: ContentAudience;
+  }> = [
+    {
+      title: "Live study sprint kickoff",
+      description: "Join a focused 60-minute session with quick revision prompts and Q&A.",
+      startAt: offsetDate(1, 18, 0),
+      endAt: offsetDate(1, 19, 0),
+      location: "Online classroom",
+      audience: "ALL",
+    },
+    {
+      title: "Exam readiness clinic",
+      description: "Strategies for pacing, question selection, and reducing common exam mistakes.",
+      startAt: offsetDate(3, 16, 30),
+      endAt: offsetDate(3, 17, 45),
+      location: "Main campus hall",
+      audience: "STUDENT",
+    },
+    {
+      title: "Parent progress check-in",
+      description: "Walkthrough of weekly performance insights and how to support home study routines.",
+      startAt: offsetDate(4, 19, 0),
+      endAt: offsetDate(4, 20, 0),
+      location: "Virtual webinar",
+      audience: "PARENT",
+    },
+    {
+      title: "Tutor planning huddle",
+      description: "Align tutoring plans with upcoming assessments and identify learners at risk.",
+      startAt: offsetDate(5, 15, 0),
+      endAt: offsetDate(5, 16, 0),
+      location: "Staff room 2",
+      audience: "TUTOR",
+    },
+    {
+      title: "Admin operations sync",
+      description: "Review platform activity, announcements performance, and system health actions.",
+      startAt: offsetDate(6, 10, 0),
+      endAt: offsetDate(6, 10, 45),
+      location: "Admin board room",
+      audience: "ADMIN",
+    },
+  ];
+
+  for (const seed of eventSeeds) {
+    const [existing] = await db
+      .select({ id: events.id })
+      .from(events)
+      .where(and(eq(events.title, seed.title), eq(events.audience, seed.audience)))
+      .limit(1);
+
+    if (existing) {
+      await db
+        .update(events)
+        .set({
+          description: seed.description,
+          startAt: seed.startAt,
+          endAt: seed.endAt ?? null,
+          allDay: seed.allDay ?? false,
+          location: seed.location ?? null,
+          updatedAt: new Date(),
+        })
+        .where(eq(events.id, existing.id));
+      continue;
+    }
+
+    await db.insert(events).values({
+      title: seed.title,
+      description: seed.description,
+      startAt: seed.startAt,
+      endAt: seed.endAt ?? null,
+      allDay: seed.allDay ?? false,
+      location: seed.location ?? null,
+      audience: seed.audience,
+    });
+  }
+}
+
 async function seedAssignmentsAndChecklists() {
   const allModules = await db
     .select({
@@ -450,6 +621,7 @@ async function seedQuestionBankAndAssessmentsFromQuizzes() {
 export async function seed() {
   await ensureRoles();
   await ensureBadges();
+  await seedAnnouncementsAndEvents();
   await seedSubject(itSubject, itModules);
   await seedSubject(mathSubject, mathModules);
   await seedAssignmentsAndChecklists();
@@ -457,7 +629,8 @@ export async function seed() {
 }
 
 // Auto-run when executed directly (e.g. `tsx src/seed/seed.ts`)
-const isMain = process.argv[1]?.replace(/\\/g, "/").includes("seed/seed");
+const entrypoint = process.argv[1]?.replace(/\\/g, "/") ?? "";
+const isMain = /\/seed\/seed(\.js|\.ts)?$/.test(entrypoint);
 if (isMain) {
   seed()
     .then(() => {

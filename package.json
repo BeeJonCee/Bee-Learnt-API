@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "seed": "tsx src/seed/seed.ts",
+    "seed:announcements-events": "tsx src/seed/seed-announcements-events.ts",
     "seed:curriculum": "tsx src/seed/seed-curriculum.ts",
     "seed:nsc-papers": "tsx src/seed/seed-nsc-papers.ts",
     "seed:resources": "tsx src/seed/seed-subject-resources.ts",

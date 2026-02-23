@@ -3,6 +3,7 @@ import { z } from "zod";
 // Re-export everything from sub-validator files
 export * from "./questions.validators.js";
 export * from "./subject-resources.validators.js";
+export * from "./notifications.validators.js";
 
 // ─── Aliases for question bank schemas (routes use these names) ────────────────
 export {
@@ -328,25 +329,9 @@ export const messageListQuerySchema = z.object({
 
 // ─── Announcements ────────────────────────────────────────────────────────────
 
-export const announcementCreateSchema = z.object({
-  title: z.string().min(1).max(200),
-  content: z.string().min(1),
-  targetAudience: z.enum(["all", "students", "parents", "tutors"]).default("all"),
-  priority: z.enum(["low", "medium", "high"]).default("medium"),
-  expiresAt: z.string().datetime().optional(),
-});
 
 // ─── Events ───────────────────────────────────────────────────────────────────
 
-export const eventCreateSchema = z.object({
-  title: z.string().min(1).max(200),
-  description: z.string().optional(),
-  startDate: z.string().datetime(),
-  endDate: z.string().datetime(),
-  location: z.string().optional(),
-  capacity: z.number().int().positive().optional(),
-  type: z.enum(["academic", "social", "sports", "other"]).default("academic"),
-});
 
 // ─── AI Tutor ─────────────────────────────────────────────────────────────────
 

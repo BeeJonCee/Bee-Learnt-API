@@ -3,10 +3,12 @@ import { createServer } from "http";
 import { app } from "./app.js";
 import { bootstrap } from "./bootstrap.js";
 import { env } from "./config/env.js";
+import { startNeonAuthUserSyncWorker } from "./modules/auth/neon-auth-sync.worker.js";
 import { createLogger } from "./shared/utils/logger.js";
 import { initializeSocket, getIO } from "./socket/index.js";
 
 const logger = createLogger("server");
+let stopNeonAuthUserSyncWorker: (() => void) | null = null;
 
 const port = env.port;
 const host = "0.0.0.0";
@@ -21,6 +23,7 @@ initializeSocket(httpServer);
 bootstrap()
   .then(() => {
     httpServer.listen(port, host, () => {
+      stopNeonAuthUserSyncWorker = startNeonAuthUserSyncWorker();
       logger.info("BeeLearnt API is ready", {
         host,
         port,
@@ -42,6 +45,11 @@ bootstrap()
 
 function shutdown(signal: string): void {
   logger.info(`${signal} received — shutting down gracefully`);
+
+  if (stopNeonAuthUserSyncWorker) {
+    stopNeonAuthUserSyncWorker();
+    stopNeonAuthUserSyncWorker = null;
+  }
 
   httpServer.close((err) => {
     if (err) {

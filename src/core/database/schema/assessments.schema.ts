@@ -45,6 +45,9 @@ export const assessments = pgTable("assessments", {
   availableFrom: timestamp("available_from", { withTimezone: true }),
   availableUntil: timestamp("available_until", { withTimezone: true }),
   instructions: text("instructions"),
+  strictMode: boolean("strict_mode").default(false).notNull(),
+  paperType: varchar("paper_type", { length: 20 }).default("weekly"),
+  isManualPaper: boolean("is_manual_paper").default(false).notNull(),
   createdBy: text("created_by").references(() => users.id),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -55,10 +58,13 @@ export const assessments = pgTable("assessments", {
 export const assessmentSections = pgTable("assessment_sections", {
   id: serial("id").primaryKey(),
   assessmentId: integer("assessment_id").references(() => assessments.id).notNull(),
+  label: varchar("label", { length: 10 }),
   title: varchar("title", { length: 160 }),
   instructions: text("instructions"),
   order: integer("order").notNull(),
   timeLimitMinutes: integer("time_limit_minutes"),
+  totalMarks: integer("total_marks"),
+  strictMode: boolean("strict_mode").default(false).notNull(),
 });
 
 // ── ASSESSMENT QUESTIONS ────────────────────
@@ -111,5 +117,20 @@ export const attemptAnswers = pgTable("attempt_answers", {
   maxScore: integer("max_score"),
   timeTakenSeconds: integer("time_taken_seconds"),
   markerComment: text("marker_comment"),
+  markedBy: text("marked_by").references(() => users.id),
+  markedAt: timestamp("marked_at", { withTimezone: true }),
   answeredAt: timestamp("answered_at", { withTimezone: true }),
+});
+
+// ── PAPER ASSIGNMENTS ────────────────────────
+
+export const paperAssignments = pgTable("paper_assignments", {
+  id: serial("id").primaryKey(),
+  assessmentId: integer("assessment_id").references(() => assessments.id, { onDelete: "cascade" }).notNull(),
+  studentId: text("student_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  assignedBy: text("assigned_by").references(() => users.id).notNull(),
+  openAt: timestamp("open_at", { withTimezone: true }),
+  closeAt: timestamp("close_at", { withTimezone: true }),
+  maxAttempts: integer("max_attempts").default(1).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });

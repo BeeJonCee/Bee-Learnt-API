@@ -119,6 +119,9 @@ export const assessmentTypeEnum = pgEnum("assessment_type", [
 export const assessmentStatusEnum = pgEnum("assessment_status", [
   "draft",
   "published",
+  "closed",
+  "marking",
+  "released",
   "archived",
 ]);
 
@@ -128,6 +131,7 @@ export const attemptStatusEnum = pgEnum("attempt_status", [
   "timed_out",
   "graded",
   "reviewed",
+  "released",
 ]);
 
 // ── TUTORING ────────────────────────────────
