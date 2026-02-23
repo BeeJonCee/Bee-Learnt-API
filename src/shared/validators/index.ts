@@ -286,6 +286,10 @@ export const lessonNoteCreateSchema = z.object({
   content: z.string().min(1),
 });
 
+export const lessonNoteUpdateSchema = z.object({
+  content: z.string().min(1),
+});
+
 export const lessonNoteQuerySchema = z.object({
   lessonId: z.coerce.number().int().positive().optional(),
   moduleId: z.coerce.number().int().positive().optional(),
@@ -425,6 +429,7 @@ export const quizSubmitSchema = z.object({
 export const quizQuerySchema = z.object({
   subjectId: z.coerce.number().int().positive().optional(),
   topicId: z.coerce.number().int().positive().optional(),
+  moduleId: z.coerce.number().int().positive().optional(),
   status: z.enum(["active", "archived"]).optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(50).default(20),
@@ -438,11 +443,6 @@ export const quizUpdateSchema = z.object({
 });
 
 export const quizCheckSchema = z.object({
-  quizId: z.number().int().positive(),
-  answers: z.array(
-    z.object({
-      questionId: z.number().int().positive(),
-      selectedOption: z.union([z.string(), z.number(), z.boolean()]),
-    })
-  ),
+  questionId: z.number().int().positive(),
+  answer: z.union([z.string(), z.number(), z.boolean()]),
 });

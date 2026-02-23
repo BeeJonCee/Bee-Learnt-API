@@ -23,7 +23,11 @@ export const listNotes = asyncHandler(async (req: Request, res: Response) => {
   const notes = await db
     .select()
     .from(lessonNotes)
-    .where(and(eq(lessonNotes.userId, userId), eq(lessonNotes.lessonId, parsed.data.lessonId)))
+    .where(
+      parsed.data.lessonId !== undefined
+        ? and(eq(lessonNotes.userId, userId), eq(lessonNotes.lessonId, parsed.data.lessonId))
+        : eq(lessonNotes.userId, userId)
+    )
     .orderBy(lessonNotes.createdAt);
 
   res.json(notes);
@@ -49,4 +53,59 @@ export const createNote = asyncHandler(async (req: Request, res: Response) => {
     .returning();
 
   res.status(201).json(created);
+});
+
+export const updateNote = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.id ?? null;
+  if (!userId) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
+
+  const noteId = Number(req.params.id);
+  if (!noteId || Number.isNaN(noteId)) {
+    res.status(400).json({ message: "Invalid note id" });
+    return;
+  }
+
+  const { content } = req.body as { content: string };
+
+  const [updated] = await db
+    .update(lessonNotes)
+    .set({ content, updatedAt: new Date() })
+    .where(and(eq(lessonNotes.id, noteId), eq(lessonNotes.userId, userId)))
+    .returning();
+
+  if (!updated) {
+    res.status(404).json({ message: "Note not found" });
+    return;
+  }
+
+  res.json(updated);
+});
+
+export const deleteNote = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.id ?? null;
+  if (!userId) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
+
+  const noteId = Number(req.params.id);
+  if (!noteId || Number.isNaN(noteId)) {
+    res.status(400).json({ message: "Invalid note id" });
+    return;
+  }
+
+  const [deleted] = await db
+    .delete(lessonNotes)
+    .where(and(eq(lessonNotes.id, noteId), eq(lessonNotes.userId, userId)))
+    .returning();
+
+  if (!deleted) {
+    res.status(404).json({ message: "Note not found" });
+    return;
+  }
+
+  res.status(204).send();
 });
