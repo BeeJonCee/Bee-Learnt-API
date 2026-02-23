@@ -27,6 +27,7 @@ import {
 } from "./gamification/index.js";
 import { announcementsRoutes, eventsRoutes, notificationsRoutes } from "./notifications/index.js";
 import { nscPapersRoutes } from "./nsc-papers/index.js";
+import { papersRoutes } from "./papers/index.js";
 import { parentRoutes, parentStudentRoutes } from "./parents/index.js";
 import { progressRoutes, progressRbacRoutes } from "./progress/index.js";
 import { questionBankRoutes } from "./questions/index.js";
@@ -78,6 +79,7 @@ router.use("/tutor", tutorRoutes);
 router.use("/question-bank", questionBankRoutes);
 router.use("/curriculum", curriculumRoutes);
 router.use("/nsc-papers", nscPapersRoutes);
+router.use("/papers", papersRoutes);
 router.use("/messages", messagingRoutes);
 router.use("/timetable", timetableRoutes);
 router.use("/analytics", analyticsRoutes);
