@@ -597,7 +597,7 @@ export async function getMyPapers(studentId: string) {
         inArray(assessments.status, ["published", "closed", "marking", "released"]),
       ),
     )
-    .orderBy(sql`${paperAssignments.created_at} desc`);
+    .orderBy(sql`${paperAssignments.createdAt} desc`);
 
   return assignments;
 }

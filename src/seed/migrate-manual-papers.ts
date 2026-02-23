@@ -46,7 +46,7 @@ export async function migrate() {
   // ── Extend attempt_answers table ──────────────────────────────────────────
   await db.execute(sql`
     ALTER TABLE attempt_answers
-      ADD COLUMN IF NOT EXISTS marked_by text REFERENCES users(id),
+      ADD COLUMN IF NOT EXISTS marked_by uuid REFERENCES users(id),
       ADD COLUMN IF NOT EXISTS marked_at timestamptz;
   `);
 
@@ -55,8 +55,8 @@ export async function migrate() {
     CREATE TABLE IF NOT EXISTS paper_assignments (
       id            serial PRIMARY KEY,
       assessment_id integer NOT NULL REFERENCES assessments(id) ON DELETE CASCADE,
-      student_id    text    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      assigned_by   text    NOT NULL REFERENCES users(id),
+      student_id    uuid    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      assigned_by   uuid    NOT NULL REFERENCES users(id),
       open_at       timestamptz,
       close_at      timestamptz,
       max_attempts  integer NOT NULL DEFAULT 1,
