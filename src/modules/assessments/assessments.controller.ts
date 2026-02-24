@@ -22,6 +22,7 @@ import {
   assignPaper,
   listAssignments,
   removeAssignment,
+  updateAssignment,
   listSubmissions,
   getSubmission,
   markAnswer,
@@ -417,4 +418,29 @@ export const getLatestReleasedAttempt = asyncHandler(async (req, res) => {
   }
   const result = await getLatestReleasedAttemptForUser(id, req.user!.id);
   res.json(result);
+});
+
+// PATCH /api/assessments/:id  (update metadata — draft only)
+export const updateAssessmentHandler = asyncHandler(async (req, res) => {
+  const id = parseNumber(req.params.id as string);
+  if (!id) { res.status(400).json({ message: "Invalid assessment ID" }); return; }
+  const updated = await updatePaper(id, req.body);
+  res.json(updated);
+});
+
+// DELETE /api/assessments/:id  (delete — draft only)
+export const deleteAssessmentHandler = asyncHandler(async (req, res) => {
+  const id = parseNumber(req.params.id as string);
+  if (!id) { res.status(400).json({ message: "Invalid assessment ID" }); return; }
+  await deletePaper(id);
+  res.status(204).end();
+});
+
+// PATCH /api/assessments/:id/assignments/:assignmentId  (update assignment window / attempts)
+export const updateAssignmentHandler = asyncHandler(async (req, res) => {
+  const id = parseNumber(req.params.id as string);
+  const assignmentId = parseNumber(req.params.assignmentId as string);
+  if (!id || !assignmentId) { res.status(400).json({ message: "Invalid ID" }); return; }
+  const updated = await updateAssignment(id, assignmentId, req.body);
+  res.json(updated);
 });

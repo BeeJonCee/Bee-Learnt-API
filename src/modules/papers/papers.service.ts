@@ -548,6 +548,29 @@ export async function removeAssignment(paperId: number, assignmentId: number) {
     );
 }
 
+export async function updateAssignment(
+  paperId: number,
+  assignmentId: number,
+  input: { openAt?: string | null; closeAt?: string | null; maxAttempts?: number },
+) {
+  await getPaperOrThrow(paperId);
+  const setValues: Record<string, unknown> = {};
+  if ("openAt" in input) setValues["openAt"] = input.openAt ? new Date(input.openAt) : null;
+  if ("closeAt" in input) setValues["closeAt"] = input.closeAt ? new Date(input.closeAt) : null;
+  if (input.maxAttempts != null) setValues["maxAttempts"] = Math.max(1, input.maxAttempts);
+  const [updated] = await db
+    .update(paperAssignments)
+    .set(setValues)
+    .where(
+      and(
+        eq(paperAssignments.id, assignmentId),
+        eq(paperAssignments.assessmentId, paperId),
+      ),
+    )
+    .returning();
+  return updated;
+}
+
 // ── Submissions (marking) ─────────────────────────────────────────────────────
 
 export async function listSubmissions(paperId: number) {

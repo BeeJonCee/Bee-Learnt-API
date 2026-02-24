@@ -1500,6 +1500,7 @@ export {
   assignPaper,
   listAssignments,
   removeAssignment,
+  updateAssignment,
   listSubmissions,
   getSubmission,
   markAnswer,

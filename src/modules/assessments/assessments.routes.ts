@@ -9,6 +9,7 @@ import {
   create,
   createSection,
   deleteAssignment,
+  deleteAssessmentHandler,
   deleteSectionHandler,
   debugQuestionOptions,
   finalizeMarkingHandler,
@@ -28,6 +29,8 @@ import {
   removeQuestion,
   startMarking,
   start,
+  updateAssessmentHandler,
+  updateAssignmentHandler,
   updateSectionHandler,
 } from "./assessments.controller.js";
 
@@ -172,6 +175,12 @@ assessmentsRoutes.delete(
   requireRole(["ADMIN"]),
   deleteAssignment
 );
+assessmentsRoutes.patch(
+  "/:id/assignments/:assignmentId",
+  requireAuth,
+  requireRole(["ADMIN"]),
+  updateAssignmentHandler
+);
 
 assessmentsRoutes.get(
   "/:id/submissions",
@@ -235,6 +244,8 @@ assessmentsRoutes.get(
  *         description: Assessment details
  */
 assessmentsRoutes.get("/:id", requireAuth, getById);
+assessmentsRoutes.patch("/:id", requireAuth, requireRole(["ADMIN"]), updateAssessmentHandler);
+assessmentsRoutes.delete("/:id", requireAuth, requireRole(["ADMIN"]), deleteAssessmentHandler);
 
 /**
  * @swagger
