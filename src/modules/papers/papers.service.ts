@@ -12,6 +12,10 @@ import {
   users,
 } from "../../core/database/schema/index.js";
 import { HttpError } from "../../shared/utils/http-error.js";
+import {
+  assertDraftPaperStatus,
+  STUDENT_VISIBLE_PAPER_STATUSES,
+} from "./papers.policy.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,7 +67,7 @@ async function getPaperOrThrow(id: number) {
   const [paper] = await db
     .select()
     .from(assessments)
-    .where(and(eq(assessments.id, id), eq(assessments.isManualPaper, true)));
+    .where(eq(assessments.id, id));
   if (!paper) throw new HttpError("Paper not found", 404);
   return paper;
 }
@@ -162,9 +166,7 @@ export async function getPaper(id: number) {
 
 export async function updatePaper(id: number, input: UpdatePaperInput) {
   const paper = await getPaperOrThrow(id);
-  if (paper.status !== "draft") {
-    throw new HttpError("Only draft papers can be edited", 400);
-  }
+  assertDraftPaperStatus(paper.status);
 
   const [updated] = await db
     .update(assessments)
@@ -176,9 +178,7 @@ export async function updatePaper(id: number, input: UpdatePaperInput) {
 
 export async function deletePaper(id: number) {
   const paper = await getPaperOrThrow(id);
-  if (paper.status !== "draft") {
-    throw new HttpError("Only draft papers can be deleted", 400);
-  }
+  assertDraftPaperStatus(paper.status, "Only draft papers can be deleted");
   await db.delete(assessments).where(eq(assessments.id, id));
 }
 
@@ -293,7 +293,8 @@ export async function releasePaper(id: number) {
 // ── Sections ──────────────────────────────────────────────────────────────────
 
 export async function addSection(paperId: number, input: CreateSectionInput) {
-  await getPaperOrThrow(paperId);
+  const paper = await getPaperOrThrow(paperId);
+  assertDraftPaperStatus(paper.status);
   const [section] = await db
     .insert(assessmentSections)
     .values({
@@ -314,7 +315,8 @@ export async function updateSection(
   sectionId: number,
   input: Partial<CreateSectionInput>,
 ) {
-  await getPaperOrThrow(paperId);
+  const paper = await getPaperOrThrow(paperId);
+  assertDraftPaperStatus(paper.status);
   const [updated] = await db
     .update(assessmentSections)
     .set(input)
@@ -330,7 +332,8 @@ export async function updateSection(
 }
 
 export async function deleteSection(paperId: number, sectionId: number) {
-  await getPaperOrThrow(paperId);
+  const paper = await getPaperOrThrow(paperId);
+  assertDraftPaperStatus(paper.status);
   await db
     .delete(assessmentSections)
     .where(
@@ -348,7 +351,8 @@ export async function addQuestionToSection(
   sectionId: number,
   input: AddQuestionInput,
 ) {
-  await getPaperOrThrow(paperId);
+  const paper = await getPaperOrThrow(paperId);
+  assertDraftPaperStatus(paper.status);
   const [pq] = await db
     .insert(assessmentQuestions)
     .values({
@@ -368,7 +372,8 @@ export async function updatePaperQuestion(
   pqId: number,
   input: { overridePoints?: number; order?: number },
 ) {
-  await getPaperOrThrow(paperId);
+  const paper = await getPaperOrThrow(paperId);
+  assertDraftPaperStatus(paper.status);
   const [updated] = await db
     .update(assessmentQuestions)
     .set(input)
@@ -385,7 +390,8 @@ export async function updatePaperQuestion(
 }
 
 export async function removePaperQuestion(paperId: number, sectionId: number, pqId: number) {
-  await getPaperOrThrow(paperId);
+  const paper = await getPaperOrThrow(paperId);
+  assertDraftPaperStatus(paper.status);
   await db
     .delete(assessmentQuestions)
     .where(
@@ -725,7 +731,7 @@ export async function getMyPapers(studentId: string) {
     .where(
       and(
         eq(paperAssignments.studentId, studentId),
-        inArray(assessments.status, ["published", "closed", "marking", "released"]),
+        inArray(assessments.status, [...STUDENT_VISIBLE_PAPER_STATUSES]),
       ),
     )
     .orderBy(sql`${paperAssignments.createdAt} desc`);

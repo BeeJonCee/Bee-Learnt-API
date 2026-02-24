@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "../../core/database/index.js";
 import { questionBankItems, subjects, modules } from "../../core/database/schema/index.js";
 
@@ -321,7 +321,12 @@ export async function listQuestions(input: ListQuestionsInput) {
     conditions.push(eq(questionBankItems.isActive, input.isActive));
   }
   if (input.search) {
-    conditions.push(ilike(questionBankItems.questionText, `%${input.search}%`));
+    conditions.push(
+      or(
+        ilike(questionBankItems.questionText, `%${input.search}%`),
+        ilike(questionBankItems.questionHtml, `%${input.search}%`),
+      ),
+    );
   }
   if (input.tags && input.tags.length > 0) {
     // Check if any of the provided tags are in the question's tags array

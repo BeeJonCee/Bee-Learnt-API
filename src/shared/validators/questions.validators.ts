@@ -236,7 +236,14 @@ export const assessmentTypeSchema = z.enum([
   "diagnostic",
 ]);
 
-export const assessmentStatusSchema = z.enum(["draft", "published", "archived"]);
+export const assessmentStatusSchema = z.enum([
+  "draft",
+  "published",
+  "closed",
+  "marking",
+  "released",
+  "archived",
+]);
 
 export const createAssessmentSchema = z.object({
   title: z.string().min(3).max(200),
@@ -244,6 +251,7 @@ export const createAssessmentSchema = z.object({
   type: assessmentTypeSchema,
   status: assessmentStatusSchema.default("draft"),
   subjectId: z.number().int().positive(),
+  grade: z.number().int().positive().optional(),
   gradeId: z.number().int().positive().optional(),
   topicId: z.number().int().positive().optional(),
   moduleId: z.number().int().positive().optional(),
@@ -296,11 +304,13 @@ export const questionBankFiltersSchema = z.object({
 
 export const assessmentFiltersSchema = z.object({
   type: assessmentTypeSchema.optional(),
-  subjectId: z.number().int().positive().optional(),
-  gradeId: z.number().int().positive().optional(),
+  subjectId: z.coerce.number().int().positive().optional(),
+  gradeId: z.coerce.number().int().positive().optional(),
+  moduleId: z.coerce.number().int().positive().optional(),
   status: assessmentStatusSchema.optional(),
-  page: z.number().int().positive().default(1),
-  limit: z.number().int().positive().max(100).default(20),
+  page: z.coerce.number().int().positive().default(1),
+  offset: z.coerce.number().int().nonnegative().optional(),
+  limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
 // ══════════════════════════════════════════════════════════

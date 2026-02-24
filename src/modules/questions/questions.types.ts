@@ -1,6 +1,6 @@
 /**
  * Question Types & Interfaces for BeeLearnt Assessment Engine
- * Supports 9 question types with validation and grading
+ * Supports 11 question types with validation and grading
  */
 
 // ══════════════════════════════════════════════════════════

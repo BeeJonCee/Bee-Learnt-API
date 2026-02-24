@@ -17,6 +17,7 @@ import {
   assessmentSections,
   assessments,
   attemptAnswers,
+  paperAssignments,
   questionBankItems,
   subjects,
 } from "../../core/database/schema/index.js";
@@ -35,14 +36,21 @@ export type AssessmentType =
   | "nsc_simulation"
   | "diagnostic";
 
-export type AssessmentStatus = "draft" | "published" | "archived";
+export type AssessmentStatus =
+  | "draft"
+  | "published"
+  | "closed"
+  | "marking"
+  | "released"
+  | "archived";
 
 export type AttemptStatus =
   | "in_progress"
   | "submitted"
   | "timed_out"
   | "graded"
-  | "reviewed";
+  | "reviewed"
+  | "released";
 
 type ListAssessmentsInput = {
   role: BeeLearntRole;
@@ -71,7 +79,7 @@ type CreateAssessmentInput = {
   showCorrectAnswers?: boolean;
   showExplanations?: boolean;
   instructions?: string;
-  sections: Array<{
+  sections?: Array<{
     title?: string;
     instructions?: string;
     order: number;
@@ -610,6 +618,93 @@ function canViewExplanations(role: BeeLearntRole, assessment: typeof assessments
   return Boolean(assessment.showExplanations);
 }
 
+export async function listMyAssignedAssessments(studentId: string) {
+  const rows = await db
+    .select({
+      id: assessments.id,
+      title: assessments.title,
+      description: assessments.description,
+      type: assessments.type,
+      status: assessments.status,
+      subjectId: assessments.subjectId,
+      subjectName: subjects.name,
+      grade: assessments.grade,
+      moduleId: assessments.moduleId,
+      timeLimitMinutes: assessments.timeLimitMinutes,
+      totalMarks: assessments.totalMarks,
+      paperType: assessments.paperType,
+      isManualPaper: assessments.isManualPaper,
+      instructions: assessments.instructions,
+      availableFrom: assessments.availableFrom,
+      availableUntil: assessments.availableUntil,
+      openAt: paperAssignments.openAt,
+      closeAt: paperAssignments.closeAt,
+      maxAttempts: paperAssignments.maxAttempts,
+      createdAt: assessments.createdAt,
+      updatedAt: assessments.updatedAt,
+    })
+    .from(paperAssignments)
+    .innerJoin(assessments, eq(paperAssignments.assessmentId, assessments.id))
+    .innerJoin(subjects, eq(assessments.subjectId, subjects.id))
+    .where(
+      and(
+        eq(paperAssignments.studentId, studentId),
+        inArray(assessments.status, [
+          "published",
+          "closed",
+          "marking",
+          "released",
+        ]),
+      ),
+    )
+    .orderBy(desc(paperAssignments.createdAt));
+
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const assessmentIds = rows.map((row) => row.id);
+
+  const attempts = await db
+    .select({
+      id: assessmentAttempts.id,
+      assessmentId: assessmentAttempts.assessmentId,
+      status: assessmentAttempts.status,
+      submittedAt: assessmentAttempts.submittedAt,
+      gradedAt: assessmentAttempts.gradedAt,
+      percentage: assessmentAttempts.percentage,
+    })
+    .from(assessmentAttempts)
+    .where(
+      and(
+        eq(assessmentAttempts.userId, studentId),
+        inArray(assessmentAttempts.assessmentId, assessmentIds),
+      ),
+    )
+    .orderBy(
+      desc(sql`coalesce(${assessmentAttempts.submittedAt}, ${assessmentAttempts.startedAt})`),
+    );
+
+  const latestAttemptByAssessmentId = new Map<number, (typeof attempts)[number]>();
+  for (const attempt of attempts) {
+    if (!latestAttemptByAssessmentId.has(attempt.assessmentId)) {
+      latestAttemptByAssessmentId.set(attempt.assessmentId, attempt);
+    }
+  }
+
+  return rows.map((row) => {
+    const latest = latestAttemptByAssessmentId.get(row.id);
+    return {
+      ...row,
+      latestAttemptId: latest?.id ?? null,
+      latestAttemptStatus: latest?.status ?? null,
+      latestPercentage: latest?.percentage ?? null,
+      latestSubmittedAt: latest?.submittedAt ?? null,
+      latestGradedAt: latest?.gradedAt ?? null,
+    };
+  });
+}
+
 export async function listAssessments(input: ListAssessmentsInput) {
   const now = new Date();
   const conditions: any[] = [];
@@ -644,6 +739,10 @@ export async function listAssessments(input: ListAssessmentsInput) {
       grade: assessments.grade,
       moduleId: assessments.moduleId,
       timeLimitMinutes: assessments.timeLimitMinutes,
+      totalMarks: assessments.totalMarks,
+      paperType: assessments.paperType,
+      isManualPaper: assessments.isManualPaper,
+      instructions: assessments.instructions,
       availableFrom: assessments.availableFrom,
       availableUntil: assessments.availableUntil,
       createdAt: assessments.createdAt,
@@ -813,27 +912,33 @@ export async function getAssessmentQuestionOptionsDebug(
 }
 
 export async function createAssessment(input: CreateAssessmentInput, createdBy: string) {
+  const sectionsInput = input.sections ?? [];
   const questionIds = Array.from(
     new Set(
-      input.sections.flatMap((section) =>
-        section.questions.map((question) => question.questionBankItemId)
+      sectionsInput.flatMap((section) =>
+        (section.questions ?? []).map((question) => question.questionBankItemId)
       )
     )
   );
 
-  if (questionIds.length === 0) {
+  if (sectionsInput.length > 0 && questionIds.length === 0) {
     throw new HttpError("Assessment must contain at least one question.", 400);
   }
 
-  const existingQuestions = await db
-    .select({ id: questionBankItems.id })
-    .from(questionBankItems)
-    .where(inArray(questionBankItems.id, questionIds));
+  if (questionIds.length > 0) {
+    const existingQuestions = await db
+      .select({ id: questionBankItems.id })
+      .from(questionBankItems)
+      .where(inArray(questionBankItems.id, questionIds));
 
-  const existingIds = new Set(existingQuestions.map((row) => row.id));
-  const missing = questionIds.filter((id) => !existingIds.has(id));
-  if (missing.length > 0) {
-    throw new HttpError(`Unknown questionBankItemId(s): ${missing.join(", ")}`, 400);
+    const existingIds = new Set(existingQuestions.map((row) => row.id));
+    const missing = questionIds.filter((id) => !existingIds.has(id));
+    if (missing.length > 0) {
+      throw new HttpError(
+        `Unknown questionBankItemId(s): ${missing.join(", ")}`,
+        400,
+      );
+    }
   }
 
   const [assessment] = await db
@@ -859,7 +964,7 @@ export async function createAssessment(input: CreateAssessmentInput, createdBy: 
     })
     .returning();
 
-  for (const section of input.sections) {
+  for (const section of sectionsInput) {
     const [createdSection] = await db
       .insert(assessmentSections)
       .values({
@@ -871,15 +976,18 @@ export async function createAssessment(input: CreateAssessmentInput, createdBy: 
       })
       .returning();
 
-    await db.insert(assessmentQuestions).values(
-      section.questions.map((question) => ({
-        assessmentId: assessment.id,
-        sectionId: createdSection.id,
-        questionBankItemId: question.questionBankItemId,
-        order: question.order,
-        overridePoints: question.overridePoints ?? null,
-      }))
-    );
+    const sectionQuestions = section.questions ?? [];
+    if (sectionQuestions.length > 0) {
+      await db.insert(assessmentQuestions).values(
+        sectionQuestions.map((question) => ({
+          assessmentId: assessment.id,
+          sectionId: createdSection.id,
+          questionBankItemId: question.questionBankItemId,
+          order: question.order,
+          overridePoints: question.overridePoints ?? null,
+        })),
+      );
+    }
   }
 
   return assessment;
@@ -906,22 +1014,49 @@ export async function startAssessmentAttempt(
   }
 
   const isPrivileged = role === "ADMIN" || role === "TUTOR";
+  let assignmentMaxAttempts = assessment.maxAttempts ?? null;
 
   if (!isPrivileged) {
     if (assessment.status !== "published") {
       throw new HttpError("Assessment is not available.", 403);
     }
 
+    const [assignment] = await db
+      .select({
+        openAt: paperAssignments.openAt,
+        closeAt: paperAssignments.closeAt,
+        maxAttempts: paperAssignments.maxAttempts,
+      })
+      .from(paperAssignments)
+      .where(
+        and(
+          eq(paperAssignments.assessmentId, assessmentId),
+          eq(paperAssignments.studentId, userId),
+        ),
+      );
+
+    if (!assignment) {
+      throw new HttpError("You are not assigned to this assessment.", 403);
+    }
+
     const now = new Date();
+    if (assignment.openAt && now < assignment.openAt) {
+      throw new HttpError("Assessment is not available yet.", 403);
+    }
+    if (assignment.closeAt && now > assignment.closeAt) {
+      throw new HttpError("Assessment is no longer available.", 403);
+    }
     if (assessment.availableFrom && assessment.availableFrom > now) {
       throw new HttpError("Assessment is not available yet.", 403);
     }
     if (assessment.availableUntil && assessment.availableUntil < now) {
       throw new HttpError("Assessment is no longer available.", 403);
     }
+
+    assignmentMaxAttempts = assignment.maxAttempts;
   }
 
-  if (assessment.maxAttempts && !isPrivileged) {
+  if (assignmentMaxAttempts && !isPrivileged) {
     const result = await db.execute<{ count: number }>(sql`
       SELECT COUNT(*)::int AS count
       FROM assessment_attempts
@@ -929,7 +1064,7 @@ export async function startAssessmentAttempt(
         AND user_id = ${userId}::uuid
     `);
     const count = result.rows[0]?.count ?? 0;
-    if (count >= assessment.maxAttempts) {
+    if (count >= assignmentMaxAttempts) {
       throw new HttpError("Maximum attempts reached for this assessment.", 400);
     }
   }

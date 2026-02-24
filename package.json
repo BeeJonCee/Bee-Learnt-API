@@ -22,6 +22,7 @@
     "check:env": "tsx src/seed/check-env.ts",
     "test:connection": "tsx src/seed/test-connection.ts",
     "test:schema-sync": "tsx src/seed/test-schema-sync.ts",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "migrate:core": "tsx src/seed/migrate-core.ts",
     "migrate:fix-schema-mapping": "tsx src/seed/fix-schema-mapping.ts",
     "migrate:education-features": "tsx src/seed/migrate-education-features.ts",
