@@ -8,6 +8,9 @@ import {
   grades,
   topics,
   questionBankItems,
+  assessments,
+  assessmentSections,
+  assessmentQuestions,
 } from "../../core/database/schema/index.js";
 
 export type ExamSession =
@@ -425,10 +428,106 @@ export async function importQuestionsToBank(
     // For now, just return the result - full overwrite logic would require service modification
   }
 
+  // Fetch paper details (with subject name) to build practice assessment title
+  const [paperRow] = await db
+    .select({
+      subjectId: nscPapers.subjectId,
+      year: nscPapers.year,
+      session: nscPapers.session,
+      paperNumber: nscPapers.paperNumber,
+      totalMarks: nscPapers.totalMarks,
+      durationMinutes: nscPapers.durationMinutes,
+      metadata: nscPapers.metadata,
+      subjectName: subjects.name,
+    })
+    .from(nscPapers)
+    .innerJoin(subjects, eq(nscPapers.subjectId, subjects.id))
+    .where(eq(nscPapers.id, nscPaperId))
+    .limit(1);
+
+  if (!paperRow) {
+    return {
+      imported: result.imported.length,
+      skipped: result.skipped.length,
+      errors: result.errors,
+      assessmentId: null,
+      assessmentCreated: false,
+    };
+  }
+
+  // If an assessment was already created for this paper, return it
+  const existingAssessmentId = (paperRow.metadata as Record<string, unknown>)?.assessmentId as number | undefined;
+  if (existingAssessmentId) {
+    return {
+      imported: result.imported.length,
+      skipped: result.skipped.length,
+      errors: result.errors,
+      assessmentId: existingAssessmentId,
+      assessmentCreated: false,
+    };
+  }
+
+  // Only create a practice assessment if questions were actually imported
+  if (result.imported.length === 0) {
+    return {
+      imported: result.imported.length,
+      skipped: result.skipped.length,
+      errors: result.errors,
+      assessmentId: null,
+      assessmentCreated: false,
+    };
+  }
+
+  // Create a practice assessment linked to the imported questions
+  const title = `${paperRow.subjectName} — ${paperRow.year} ${paperRow.session} P${paperRow.paperNumber} Practice`;
+  const [newAssessment] = await db
+    .insert(assessments)
+    .values({
+      title,
+      type: "practice",
+      status: "published",
+      subjectId: paperRow.subjectId,
+      timeLimitMinutes: paperRow.durationMinutes ?? null,
+      totalMarks: paperRow.totalMarks ?? null,
+      createdBy,
+    })
+    .returning({ id: assessments.id });
+
+  // Create a single section for all imported questions
+  const [newSection] = await db
+    .insert(assessmentSections)
+    .values({
+      assessmentId: newAssessment.id,
+      label: "Q",
+      order: 1,
+    })
+    .returning({ id: assessmentSections.id });
+
+  // Link each imported question bank item to the new assessment
+  await db.insert(assessmentQuestions).values(
+    result.imported.map((qbItemId, idx) => ({
+      assessmentId: newAssessment.id,
+      sectionId: newSection.id,
+      questionBankItemId: qbItemId,
+      order: idx + 1,
+    }))
+  );
+
+  // Persist assessmentId in the NSC paper's metadata for future imports
+  await db
+    .update(nscPapers)
+    .set({
+      metadata: { ...((paperRow.metadata as Record<string, unknown>) ?? {}), assessmentId: newAssessment.id },
+      updatedAt: new Date(),
+    })
+    .where(eq(nscPapers.id, nscPaperId));
+
   return {
     imported: result.imported.length,
     skipped: result.skipped.length,
     errors: result.errors,
+    assessmentId: newAssessment.id,
+    assessmentCreated: true,
   };
 }
 

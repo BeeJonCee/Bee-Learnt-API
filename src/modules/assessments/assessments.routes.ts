@@ -14,6 +14,7 @@ import {
   finalizeMarkingHandler,
   getAssignments,
   getById,
+  getLatestReleasedAttempt,
   getPaperResultHandler,
   getSubmissionById,
   getSubmissions,
@@ -208,6 +209,11 @@ assessmentsRoutes.get(
   requireAuth,
   requireRole(["STUDENT"]),
   getPaperResultHandler
+);
+assessmentsRoutes.get(
+  "/:id/latest-released-attempt",
+  requireAuth,
+  getLatestReleasedAttempt
 );
 
 /**

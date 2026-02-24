@@ -1476,3 +1476,36 @@ export async function getAttemptReview(input: {
     })),
   };
 }
+
+// ── PR3: Service consolidation — papers.service delegates surfaced here ────────
+// All write operations (lifecycle, sections, questions, assignments, marking)
+// live in papers.service. Re-exporting them here lets the controller import
+// from a single canonical service module. When PR3 full migration lands, logic
+// will move here and papers.service will become the thin wrapper instead.
+export {
+  createPaper,
+  getPaper,
+  updatePaper,
+  deletePaper,
+  publishPaper,
+  closePaper,
+  startMarkingPaper,
+  releasePaper,
+  addSection,
+  updateSection,
+  deleteSection,
+  addQuestionToSection,
+  updatePaperQuestion,
+  removePaperQuestion,
+  assignPaper,
+  listAssignments,
+  removeAssignment,
+  listSubmissions,
+  getSubmission,
+  markAnswer,
+  finalizeMarking,
+  getPaperResult,
+  getMyPapers,
+  startPaper,
+  getLatestReleasedAttemptForUser,
+} from "../papers/papers.service.js";

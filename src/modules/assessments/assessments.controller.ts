@@ -7,8 +7,6 @@ import {
   getAssessmentQuestionOptionsDebug,
   createAssessment,
   startAssessmentAttempt,
-} from "./assessments.service.js";
-import {
   createPaper,
   getPaper as getAssessmentWorkflowDetail,
   publishPaper,
@@ -29,7 +27,8 @@ import {
   markAnswer,
   finalizeMarking,
   getPaperResult,
-} from "../papers/papers.service.js";
+  getLatestReleasedAttemptForUser,
+} from "./assessments.service.js";
 import type { AssessmentStatus, AssessmentType } from "./assessments.service.js";
 
 // GET /api/assessments
@@ -406,5 +405,16 @@ export const getPaperResultHandler = asyncHandler(async (req, res) => {
     return;
   }
   const result = await getPaperResult(id, req.user!.id);
+  res.json(result);
+});
+
+// GET /api/assessments/:id/latest-released-attempt
+export const getLatestReleasedAttempt = asyncHandler(async (req, res) => {
+  const id = parseNumber(req.params.id as string);
+  if (!id) {
+    res.status(400).json({ message: "Invalid assessment ID" });
+    return;
+  }
+  const result = await getLatestReleasedAttemptForUser(id, req.user!.id);
   res.json(result);
 });

@@ -831,3 +831,24 @@ export async function getPaperResult(paperId: number, studentId: string) {
 
   return getSubmission(paperId, attempt.id);
 }
+
+// ── Latest Released Attempt ────────────────────────────────────────────────────
+
+export async function getLatestReleasedAttemptForUser(
+  assessmentId: number,
+  userId: string,
+): Promise<{ attemptId: string | null }> {
+  const [attempt] = await db
+    .select({ id: assessmentAttempts.id })
+    .from(assessmentAttempts)
+    .where(
+      and(
+        eq(assessmentAttempts.assessmentId, assessmentId),
+        eq(assessmentAttempts.userId, userId),
+        eq(assessmentAttempts.status, "released"),
+      ),
+    )
+    .orderBy(sql`${assessmentAttempts.submittedAt} desc`)
+    .limit(1);
+  return { attemptId: attempt?.id ?? null };
+}
