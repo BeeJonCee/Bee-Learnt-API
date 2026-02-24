@@ -40,8 +40,15 @@ export const list = asyncHandler(async (req, res) => {
     return;
   }
 
-  const { type, subjectId, status, grade, gradeId, moduleId, limit, offset } =
+  const { type, subjectId, status, grade, gradeId, moduleId, limit, offset, page } =
     req.query;
+
+  const parsedLimit = limit ? Number(limit) : 20;
+  const parsedPage = page ? Number(page) : 1;
+  const parsedOffset =
+    offset !== undefined
+      ? Number(offset)
+      : Math.max(0, (parsedPage - 1) * parsedLimit);
 
   const result = await listAssessments({
     role: req.user!.role,
@@ -50,8 +57,8 @@ export const list = asyncHandler(async (req, res) => {
     status: status as AssessmentStatus | undefined,
     grade: grade ? Number(grade) : gradeId ? Number(gradeId) : undefined,
     moduleId: moduleId ? Number(moduleId) : undefined,
-    limit: limit ? Number(limit) : undefined,
-    offset: offset ? Number(offset) : undefined,
+    limit: parsedLimit,
+    offset: parsedOffset,
   });
 
   res.json(result);
