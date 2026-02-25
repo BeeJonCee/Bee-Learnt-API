@@ -271,13 +271,27 @@ export const nscPaperListQuerySchema = z.object({
 });
 
 export const nscPaperCreateSchema = z.object({
-  year: z.number().int().min(2000).max(2100),
   subjectId: z.number().int().positive(),
-  paperType: z.string().min(1),
-  grade: z.number().int().min(10).max(12),
-  title: z.string().max(200).optional(),
+  gradeId: z.number().int().positive().optional(),
+  year: z.number().int().min(2000).max(2100),
+  session: z.enum(["november", "may_june", "february_march", "supplementary", "exemplar"]),
+  paperNumber: z.number().int().positive().default(1),
+  language: z.string().optional(),
   totalMarks: z.number().int().positive().optional(),
   durationMinutes: z.number().int().positive().optional(),
+  title: z.string().max(200).optional(),
+  instructions: z.string().optional(),
+  strictMode: z.boolean().optional(),
+  sections: z
+    .array(
+      z.object({
+        label: z.string().min(1).max(10),
+        title: z.string().max(100).optional(),
+        instructions: z.string().optional(),
+        totalMarks: z.number().int().nonnegative().optional(),
+      }),
+    )
+    .optional(),
 });
 
 export const nscPaperUpdateSchema = nscPaperCreateSchema.partial();
@@ -291,11 +305,27 @@ export const nscPaperDocumentCreateSchema = z.object({
 export const nscPaperQuestionCreateSchema = z.object({
   questionText: z.string().min(1),
   options: z.array(z.any()).optional(),
-  correctAnswer: z.any(),
+  correctAnswer: z.any().optional(),
   topicId: z.number().int().positive().optional(),
   difficulty: z.enum(["easy", "medium", "hard"]).optional(),
   marks: z.number().int().positive().default(1),
   order: z.number().int().nonnegative().default(0),
+  sectionLabel: z.string().optional(),
+  questionNumber: z.string().optional(),
+  memoText: z.string().optional(),
+  type: z
+    .enum(["mcq", "multi_select", "short_answer", "long_answer", "code_practical"])
+    .optional(),
+  answerFormat: z
+    .enum(["one_word", "number", "short_sentence", "sql_snippet", "code_line"])
+    .optional(),
+  rubricCriteria: z
+    .array(z.object({ criterion: z.string().min(1), marks: z.number().positive() }))
+    .optional(),
+  modelAnswer: z.string().optional(),
+  language: z.string().optional(),
+  starterCode: z.string().optional(),
+  tags: z.array(z.string()).optional(),
 });
 
 export const nscPaperQuestionUpdateSchema = nscPaperQuestionCreateSchema.partial();

@@ -260,6 +260,11 @@ progressRoutes.get(
  *           type: integer
  *           default: 5
  *       - in: query
+ *         name: subjectId
+ *         schema:
+ *           type: integer
+ *         description: Optional subject scope
+ *       - in: query
  *         name: minQuestions
  *         schema:
  *           type: integer
@@ -293,6 +298,11 @@ progressRoutes.get(
  *           type: integer
  *           default: 5
  *       - in: query
+ *         name: subjectId
+ *         schema:
+ *           type: integer
+ *         description: Optional subject scope
+ *       - in: query
  *         name: minQuestions
  *         schema:
  *           type: integer
@@ -320,6 +330,11 @@ progressRoutes.get(
  *         name: userId
  *         schema:
  *           type: string
+ *       - in: query
+ *         name: subjectId
+ *         schema:
+ *           type: integer
+ *         description: Optional subject scope
  *     responses:
  *       200:
  *         description: Overall mastery percentage

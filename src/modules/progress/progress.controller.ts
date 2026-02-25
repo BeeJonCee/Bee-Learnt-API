@@ -486,6 +486,7 @@ export const getWeakTopics = asyncHandler(async (req: Request, res: Response) =>
     return;
   }
 
+  const subjectId = req.query.subjectId ? parseInt(req.query.subjectId as string, 10) : undefined;
   const userId = req.query.userId as string || req.user.id;
   const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 5;
   const minQuestions = req.query.minQuestions ? parseInt(req.query.minQuestions as string, 10) : 3;
@@ -499,7 +500,12 @@ export const getWeakTopics = asyncHandler(async (req: Request, res: Response) =>
     }
   }
 
-  const weakTopics = await masteryService.getWeakestTopics(userId, limit, minQuestions);
+  const weakTopics = await masteryService.getWeakestTopics(
+    userId,
+    limit,
+    minQuestions,
+    subjectId
+  );
   res.json({ userId, weakTopics });
 });
 
@@ -514,6 +520,7 @@ export const getStrongTopics = asyncHandler(async (req: Request, res: Response) 
     return;
   }
 
+  const subjectId = req.query.subjectId ? parseInt(req.query.subjectId as string, 10) : undefined;
   const userId = req.query.userId as string || req.user.id;
   const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 5;
   const minQuestions = req.query.minQuestions ? parseInt(req.query.minQuestions as string, 10) : 3;
@@ -527,7 +534,12 @@ export const getStrongTopics = asyncHandler(async (req: Request, res: Response) 
     }
   }
 
-  const strongTopics = await masteryService.getStrongestTopics(userId, limit, minQuestions);
+  const strongTopics = await masteryService.getStrongestTopics(
+    userId,
+    limit,
+    minQuestions,
+    subjectId
+  );
   res.json({ userId, strongTopics });
 });
 
@@ -542,6 +554,7 @@ export const getOverallMastery = asyncHandler(async (req: Request, res: Response
     return;
   }
 
+  const subjectId = req.query.subjectId ? parseInt(req.query.subjectId as string, 10) : undefined;
   const userId = req.query.userId as string || req.user.id;
 
   // If requesting another user's mastery, check access
@@ -553,6 +566,6 @@ export const getOverallMastery = asyncHandler(async (req: Request, res: Response
     }
   }
 
-  const overall = await masteryService.getOverallMastery(userId);
+  const overall = await masteryService.getOverallMastery(userId, subjectId);
   res.json({ userId, overallMastery: overall });
 });

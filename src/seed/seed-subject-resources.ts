@@ -283,8 +283,8 @@ async function ensureSubject(name: string): Promise<number> {
 
   const code = name.substring(0, 3).toUpperCase();
   const inserted = await db.execute<{ id: number }>(sql`
-    INSERT INTO subjects (name, code, description, is_active)
-    VALUES (${name}, ${code}, ${`${name} - Subject`}, true)
+    INSERT INTO subjects (name, code, description, min_grade, max_grade, is_active)
+    VALUES (${name}, ${code}, ${`${name} - Subject`}, 10, 12, true)
     RETURNING id
   `);
 
@@ -298,8 +298,8 @@ async function seedSubjectResources() {
   console.log(`Education folder: ${EDUCATION_FOLDER}`);
 
   if (!fs.existsSync(EDUCATION_FOLDER)) {
-    console.error("Education folder not found!");
-    process.exit(1);
+    console.warn("Education folder not found. Skipping subject resources seed.");
+    return;
   }
 
   const curriculumId = await ensureCurriculum();

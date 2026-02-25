@@ -173,8 +173,25 @@ export class MasteryService {
   /**
    * Get weakest topics for a user (lowest mastery %)
    */
-  async getWeakestTopics(userId: string, limit = 5, minQuestions = 3) {
+  async getWeakestTopics(
+    userId: string,
+    limit = 5,
+    minQuestions = 3,
+    subjectId?: number
+  ) {
     try {
+      const whereClause =
+        subjectId === undefined
+          ? and(
+              eq(topicMastery.userId, userId),
+              sql`${topicMastery.totalQuestions} >= ${minQuestions}`
+            )
+          : and(
+              eq(topicMastery.userId, userId),
+              sql`${topicMastery.totalQuestions} >= ${minQuestions}`,
+              eq(sql`topics.subject_id`, subjectId)
+            );
+
       const results = await db
         .select({
           topicId: topicMastery.topicId,
@@ -185,12 +202,7 @@ export class MasteryService {
         })
         .from(topicMastery)
         .innerJoin(sql`topics`, eq(topicMastery.topicId, sql`topics.id`))
-        .where(
-          and(
-            eq(topicMastery.userId, userId),
-            sql`${topicMastery.totalQuestions} >= ${minQuestions}`
-          )
-        )
+        .where(whereClause)
         .orderBy(topicMastery.masteryPercent)
         .limit(limit);
 
@@ -204,8 +216,25 @@ export class MasteryService {
   /**
    * Get strongest topics for a user (highest mastery %)
    */
-  async getStrongestTopics(userId: string, limit = 5, minQuestions = 3) {
+  async getStrongestTopics(
+    userId: string,
+    limit = 5,
+    minQuestions = 3,
+    subjectId?: number
+  ) {
     try {
+      const whereClause =
+        subjectId === undefined
+          ? and(
+              eq(topicMastery.userId, userId),
+              sql`${topicMastery.totalQuestions} >= ${minQuestions}`
+            )
+          : and(
+              eq(topicMastery.userId, userId),
+              sql`${topicMastery.totalQuestions} >= ${minQuestions}`,
+              eq(sql`topics.subject_id`, subjectId)
+            );
+
       const results = await db
         .select({
           topicId: topicMastery.topicId,
@@ -216,12 +245,7 @@ export class MasteryService {
         })
         .from(topicMastery)
         .innerJoin(sql`topics`, eq(topicMastery.topicId, sql`topics.id`))
-        .where(
-          and(
-            eq(topicMastery.userId, userId),
-            sql`${topicMastery.totalQuestions} >= ${minQuestions}`
-          )
-        )
+        .where(whereClause)
         .orderBy(sql`${topicMastery.masteryPercent} DESC`)
         .limit(limit);
 
@@ -235,15 +259,30 @@ export class MasteryService {
   /**
    * Get overall mastery percentage for a user across all subjects
    */
-  async getOverallMastery(userId: string): Promise<number> {
+  async getOverallMastery(userId: string, subjectId?: number): Promise<number> {
     try {
-      const result = await db
-        .select({
-          totalQuestions: sql<number>`CAST(SUM(total_questions) AS INTEGER)`,
-          correctAnswers: sql<number>`CAST(SUM(correct_answers) AS INTEGER)`,
-        })
-        .from(topicMastery)
-        .where(eq(topicMastery.userId, userId));
+      const result =
+        subjectId === undefined
+          ? await db
+              .select({
+                totalQuestions: sql<number>`CAST(SUM(total_questions) AS INTEGER)`,
+                correctAnswers: sql<number>`CAST(SUM(correct_answers) AS INTEGER)`,
+              })
+              .from(topicMastery)
+              .where(eq(topicMastery.userId, userId))
+          : await db
+              .select({
+                totalQuestions: sql<number>`CAST(SUM(${topicMastery.totalQuestions}) AS INTEGER)`,
+                correctAnswers: sql<number>`CAST(SUM(${topicMastery.correctAnswers}) AS INTEGER)`,
+              })
+              .from(topicMastery)
+              .innerJoin(sql`topics`, eq(topicMastery.topicId, sql`topics.id`))
+              .where(
+                and(
+                  eq(topicMastery.userId, userId),
+                  eq(sql`topics.subject_id`, subjectId)
+                )
+              );
 
       const data = result[0];
 

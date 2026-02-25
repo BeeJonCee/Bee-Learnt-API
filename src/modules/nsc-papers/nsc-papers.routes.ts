@@ -182,6 +182,14 @@ nscPapersRoutes.put(
   updatePaperHandler
 );
 
+nscPapersRoutes.patch(
+  "/:id",
+  requireAuth,
+  requireRole(["ADMIN"]),
+  validateBody(nscPaperUpdateSchema),
+  updatePaperHandler
+);
+
 /**
  * @swagger
  * /api/nsc-papers/{id}:
@@ -357,6 +365,14 @@ nscPapersRoutes.post(
  *         description: Question updated
  */
 nscPapersRoutes.put(
+  "/:id/questions/:questionId",
+  requireAuth,
+  requireRole(["ADMIN"]),
+  validateBody(nscPaperQuestionUpdateSchema),
+  updateQuestionHandler
+);
+
+nscPapersRoutes.patch(
   "/:id/questions/:questionId",
   requireAuth,
   requireRole(["ADMIN"]),

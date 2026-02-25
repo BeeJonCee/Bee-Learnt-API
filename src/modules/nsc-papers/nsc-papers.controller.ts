@@ -45,7 +45,11 @@ export const listPapersHandler = asyncHandler(async (req, res) => {
     offset: offset ? Number(offset) : undefined,
   });
 
-  res.json(result);
+  // Keep `papers` for frontend compatibility while exposing canonical `items`.
+  res.json({
+    ...result,
+    papers: result.items,
+  });
 });
 
 export const getPaperHandler = asyncHandler(async (req, res) => {
@@ -240,7 +244,7 @@ export const importToBankHandler = asyncHandler(async (req, res) => {
   }
 
   const userId = req.user!.id;
-  const { overwrite } = req.body;
+  const overwrite = Boolean(req.body?.overwrite);
 
   const result = await importQuestionsToBank(paperId, userId, { overwrite });
   res.json({

@@ -42,6 +42,13 @@ type ListPapersInput = {
   offset?: number;
 };
 
+type PaperSection = {
+  label: string;
+  title?: string;
+  instructions?: string;
+  totalMarks?: number;
+};
+
 type CreatePaperInput = {
   subjectId: number;
   gradeId?: number;
@@ -51,6 +58,10 @@ type CreatePaperInput = {
   language?: string;
   totalMarks?: number;
   durationMinutes?: number;
+  title?: string;
+  instructions?: string;
+  strictMode?: boolean;
+  sections?: PaperSection[];
   metadata?: Record<string, unknown>;
 };
 
@@ -170,6 +181,14 @@ export async function getPaperWithDocuments(id: number) {
 }
 
 export async function createPaper(input: CreatePaperInput) {
+  const metadataExtras: Record<string, unknown> = {};
+  if (input.title !== undefined) metadataExtras.title = input.title;
+  if (input.instructions !== undefined) metadataExtras.instructions = input.instructions;
+  if (input.strictMode !== undefined) metadataExtras.strictMode = input.strictMode;
+  if (input.sections !== undefined) metadataExtras.sections = input.sections;
+
+  const metadata = { ...(input.metadata ?? {}), ...metadataExtras };
+
   const [created] = await db
     .insert(nscPapers)
     .values({
@@ -181,7 +200,7 @@ export async function createPaper(input: CreatePaperInput) {
       language: input.language ?? "English",
       totalMarks: input.totalMarks ?? null,
       durationMinutes: input.durationMinutes ?? null,
-      metadata: input.metadata ?? {},
+      metadata,
       updatedAt: new Date(),
     })
     .returning();
@@ -302,15 +321,24 @@ export async function deleteDocument(id: number) {
 
 // ============ NSC PAPER QUESTIONS ============
 
+type RubricCriterion = { criterion: string; marks: number };
+
 type CreateQuestionInput = {
   nscPaperId: number;
-  questionNumber: string;
+  questionNumber?: string;
   questionText: string;
   marks: number;
   topicId?: number;
   sectionLabel?: string;
   imageUrl?: string;
   memoText?: string;
+  type?: string;
+  answerFormat?: string;
+  rubricCriteria?: RubricCriterion[];
+  modelAnswer?: string;
+  language?: string;
+  starterCode?: string;
+  tags?: string[];
   metadata?: Record<string, unknown>;
 };
 
@@ -361,19 +389,49 @@ export async function getQuestionById(id: number) {
   return question ?? null;
 }
 
+function buildQuestionMetadata(
+  base: Record<string, unknown>,
+  input: Pick<CreateQuestionInput, "type" | "answerFormat" | "rubricCriteria" | "modelAnswer" | "language" | "starterCode" | "tags">,
+): Record<string, unknown> {
+  const meta = { ...base };
+  if (input.type !== undefined) meta.type = input.type;
+  if (input.answerFormat !== undefined) meta.answerFormat = input.answerFormat;
+  if (input.rubricCriteria !== undefined) meta.rubricCriteria = input.rubricCriteria;
+  if (input.modelAnswer !== undefined) meta.modelAnswer = input.modelAnswer;
+  if (input.language !== undefined) meta.language = input.language;
+  if (input.starterCode !== undefined) meta.starterCode = input.starterCode;
+  if (input.tags !== undefined) meta.tags = input.tags;
+  return meta;
+}
+
 export async function createQuestion(input: CreateQuestionInput) {
+  let questionNumber = input.questionNumber;
+  if (!questionNumber) {
+    const existing = await db
+      .select({ questionNumber: nscPaperQuestions.questionNumber })
+      .from(nscPaperQuestions)
+      .where(eq(nscPaperQuestions.nscPaperId, input.nscPaperId));
+    const maxNum = existing.reduce((max, q) => {
+      const n = parseInt(q.questionNumber ?? "0", 10);
+      return isNaN(n) ? max : Math.max(max, n);
+    }, 0);
+    questionNumber = String(maxNum + 1);
+  }
+
+  const metadata = buildQuestionMetadata(input.metadata ?? {}, input);
+
   const [created] = await db
     .insert(nscPaperQuestions)
     .values({
       nscPaperId: input.nscPaperId,
-      questionNumber: input.questionNumber,
+      questionNumber,
       questionText: input.questionText,
       marks: input.marks,
       topicId: input.topicId ?? null,
       sectionLabel: input.sectionLabel ?? null,
       imageUrl: input.imageUrl ?? null,
       memoText: input.memoText ?? null,
-      metadata: input.metadata ?? {},
+      metadata,
     })
     .returning();
   return created;
@@ -389,7 +447,25 @@ export async function updateQuestion(id: number, input: UpdateQuestionInput) {
   if (input.sectionLabel !== undefined) updateData.sectionLabel = input.sectionLabel;
   if (input.imageUrl !== undefined) updateData.imageUrl = input.imageUrl;
   if (input.memoText !== undefined) updateData.memoText = input.memoText;
-  if (input.metadata !== undefined) updateData.metadata = input.metadata;
+
+  const hasMetaFields =
+    input.type !== undefined ||
+    input.answerFormat !== undefined ||
+    input.rubricCriteria !== undefined ||
+    input.modelAnswer !== undefined ||
+    input.language !== undefined ||
+    input.starterCode !== undefined ||
+    input.tags !== undefined ||
+    input.metadata !== undefined;
+
+  if (hasMetaFields) {
+    const existing = await getQuestionById(id);
+    const existingMeta = (existing?.metadata as Record<string, unknown>) ?? {};
+    updateData.metadata = buildQuestionMetadata(
+      { ...existingMeta, ...(input.metadata ?? {}) },
+      input,
+    );
+  }
 
   if (Object.keys(updateData).length === 0) return getQuestionById(id);
 
@@ -485,7 +561,8 @@ export async function importQuestionsToBank(
     .values({
       title,
       type: "practice",
-      status: "published",
+      // Keep imported NSC practice assessments editable in builder.
+      status: "draft",
       subjectId: paperRow.subjectId,
       timeLimitMinutes: paperRow.durationMinutes ?? null,
       totalMarks: paperRow.totalMarks ?? null,

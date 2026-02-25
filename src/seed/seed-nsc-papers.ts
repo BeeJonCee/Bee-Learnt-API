@@ -34,6 +34,270 @@ interface ParsedFile {
   fileName: string;
 }
 
+type SampleQuestion = {
+  questionNumber: string;
+  questionText: string;
+  marks: number;
+  sectionLabel?: string;
+  memoText?: string;
+};
+
+type SampleDocument = {
+  docType: ParsedFile["docType"];
+  title: string;
+  fileUrl: string;
+  filePath: string;
+  language?: string;
+};
+
+type SamplePaper = {
+  subject: string;
+  grade: number;
+  year: number;
+  session: ParsedFile["session"];
+  paperNumber: number;
+  language: string;
+  totalMarks?: number;
+  durationMinutes?: number;
+  documents: SampleDocument[];
+  questions: SampleQuestion[];
+};
+
+const SAMPLE_PAPERS: SamplePaper[] = [
+  {
+    subject: "Mathematics",
+    grade: 12,
+    year: 2024,
+    session: "november",
+    paperNumber: 1,
+    language: "English",
+    totalMarks: 150,
+    durationMinutes: 180,
+    documents: [
+      {
+        docType: "question_paper",
+        title: "Mathematics Grade 12 November 2024 Paper 1",
+        fileUrl: "samples/nsc/mathematics/2024/november/p1-question-paper.pdf",
+        filePath: "samples/nsc/mathematics/2024/november/p1-question-paper.pdf",
+      },
+      {
+        docType: "memorandum",
+        title: "Mathematics Grade 12 November 2024 Paper 1 Memorandum",
+        fileUrl: "samples/nsc/mathematics/2024/november/p1-memorandum.pdf",
+        filePath: "samples/nsc/mathematics/2024/november/p1-memorandum.pdf",
+      },
+    ],
+    questions: [
+      {
+        questionNumber: "1.1",
+        questionText: "Solve for x: 2x + 7 = 31.",
+        marks: 2,
+        sectionLabel: "Algebra",
+        memoText: "x = 12",
+      },
+      {
+        questionNumber: "2.1",
+        questionText:
+          "Determine the equation of the straight line passing through (2, 5) and (6, 13).",
+        marks: 4,
+        sectionLabel: "Functions",
+        memoText: "Gradient m = 2, equation y = 2x + 1.",
+      },
+      {
+        questionNumber: "3.1",
+        questionText:
+          "Find the derivative of f(x) = 3x^2 - 4x + 9 and evaluate f'(2).",
+        marks: 4,
+        sectionLabel: "Calculus",
+        memoText: "f'(x) = 6x - 4, so f'(2) = 8.",
+      },
+      {
+        questionNumber: "4.1",
+        questionText:
+          "A geometric sequence has first term 5 and common ratio 2. Write down the first four terms.",
+        marks: 3,
+        sectionLabel: "Sequences",
+        memoText: "5, 10, 20, 40.",
+      },
+      {
+        questionNumber: "5.1",
+        questionText:
+          "Given P(A) = 0.4, P(B) = 0.3 and P(A and B) = 0.1, calculate P(A or B).",
+        marks: 3,
+        sectionLabel: "Probability",
+        memoText: "P(A or B) = 0.4 + 0.3 - 0.1 = 0.6.",
+      },
+    ],
+  },
+  {
+    subject: "Mathematics",
+    grade: 12,
+    year: 2024,
+    session: "november",
+    paperNumber: 2,
+    language: "English",
+    totalMarks: 150,
+    durationMinutes: 180,
+    documents: [
+      {
+        docType: "question_paper",
+        title: "Mathematics Grade 12 November 2024 Paper 2",
+        fileUrl: "samples/nsc/mathematics/2024/november/p2-question-paper.pdf",
+        filePath: "samples/nsc/mathematics/2024/november/p2-question-paper.pdf",
+      },
+      {
+        docType: "memorandum",
+        title: "Mathematics Grade 12 November 2024 Paper 2 Memorandum",
+        fileUrl: "samples/nsc/mathematics/2024/november/p2-memorandum.pdf",
+        filePath: "samples/nsc/mathematics/2024/november/p2-memorandum.pdf",
+      },
+    ],
+    questions: [
+      {
+        questionNumber: "1.1",
+        questionText:
+          "Calculate the missing side in a right triangle where hypotenuse is 13 and one side is 5.",
+        marks: 3,
+        sectionLabel: "Trigonometry",
+        memoText: "Using Pythagoras: side = sqrt(13^2 - 5^2) = 12.",
+      },
+      {
+        questionNumber: "2.1",
+        questionText:
+          "Find the area of a triangle with sides 8 and 10 and included angle 30 degrees.",
+        marks: 4,
+        sectionLabel: "Trigonometry",
+        memoText: "Area = 1/2 * 8 * 10 * sin(30) = 20 square units.",
+      },
+      {
+        questionNumber: "3.1",
+        questionText:
+          "Determine the equation of the circle with centre (2, -1) and radius 5.",
+        marks: 3,
+        sectionLabel: "Analytical Geometry",
+        memoText: "(x - 2)^2 + (y + 1)^2 = 25.",
+      },
+      {
+        questionNumber: "4.1",
+        questionText:
+          "If vectors a = (3, -2) and b = (1, 4), calculate a + b.",
+        marks: 2,
+        sectionLabel: "Vectors",
+        memoText: "a + b = (4, 2).",
+      },
+    ],
+  },
+  {
+    subject: "Physical Sciences",
+    grade: 12,
+    year: 2023,
+    session: "november",
+    paperNumber: 1,
+    language: "English",
+    totalMarks: 150,
+    durationMinutes: 180,
+    documents: [
+      {
+        docType: "question_paper",
+        title: "Physical Sciences Grade 12 November 2023 Paper 1",
+        fileUrl: "samples/nsc/physical-sciences/2023/november/p1-question-paper.pdf",
+        filePath: "samples/nsc/physical-sciences/2023/november/p1-question-paper.pdf",
+      },
+      {
+        docType: "memorandum",
+        title: "Physical Sciences Grade 12 November 2023 Paper 1 Memorandum",
+        fileUrl: "samples/nsc/physical-sciences/2023/november/p1-memorandum.pdf",
+        filePath: "samples/nsc/physical-sciences/2023/november/p1-memorandum.pdf",
+      },
+    ],
+    questions: [
+      {
+        questionNumber: "1.1",
+        questionText:
+          "State Newton's second law of motion and identify the unit of force.",
+        marks: 3,
+        sectionLabel: "Mechanics",
+        memoText:
+          "Net force is equal to mass multiplied by acceleration. Unit of force is Newton (N).",
+      },
+      {
+        questionNumber: "2.1",
+        questionText:
+          "Calculate the acceleration of a 2 kg object acted on by a net force of 10 N.",
+        marks: 2,
+        sectionLabel: "Mechanics",
+        memoText: "a = F/m = 10/2 = 5 m/s^2.",
+      },
+      {
+        questionNumber: "3.1",
+        questionText:
+          "Define oxidation in terms of electron transfer.",
+        marks: 2,
+        sectionLabel: "Chemistry",
+        memoText: "Oxidation is the loss of electrons.",
+      },
+    ],
+  },
+  {
+    subject: "Information Technology",
+    grade: 12,
+    year: 2023,
+    session: "may_june",
+    paperNumber: 1,
+    language: "English",
+    totalMarks: 150,
+    durationMinutes: 180,
+    documents: [
+      {
+        docType: "question_paper",
+        title: "Information Technology Grade 12 May/June 2023 Paper 1",
+        fileUrl: "samples/nsc/information-technology/2023/may-june/p1-question-paper.pdf",
+        filePath: "samples/nsc/information-technology/2023/may-june/p1-question-paper.pdf",
+      },
+      {
+        docType: "memorandum",
+        title: "Information Technology Grade 12 May/June 2023 Paper 1 Memorandum",
+        fileUrl: "samples/nsc/information-technology/2023/may-june/p1-memorandum.pdf",
+        filePath: "samples/nsc/information-technology/2023/may-june/p1-memorandum.pdf",
+      },
+      {
+        docType: "data_files",
+        title: "Information Technology Grade 12 May/June 2023 Paper 1 Data Files",
+        fileUrl: "samples/nsc/information-technology/2023/may-june/p1-data-files.zip",
+        filePath: "samples/nsc/information-technology/2023/may-june/p1-data-files.zip",
+      },
+    ],
+    questions: [
+      {
+        questionNumber: "1.1",
+        questionText:
+          "Write a SQL query to return all students with marks greater than 80 from the Results table.",
+        marks: 5,
+        sectionLabel: "Database",
+        memoText: "SELECT * FROM Results WHERE mark > 80;",
+      },
+      {
+        questionNumber: "2.1",
+        questionText:
+          "Explain the difference between a while loop and a for loop in programming.",
+        marks: 4,
+        sectionLabel: "Programming",
+        memoText:
+          "A for loop is typically used when the number of iterations is known. A while loop is used when the condition controls repetition and iterations are not predetermined.",
+      },
+      {
+        questionNumber: "3.1",
+        questionText:
+          "What is encapsulation in object-oriented programming?",
+        marks: 3,
+        sectionLabel: "OOP",
+        memoText:
+          "Encapsulation is bundling data and methods in a class while restricting direct access to internal state.",
+      },
+    ],
+  },
+];
+
 // ============ FILE PARSING HELPERS ============
 
 function normalizeSubject(rawSubject: string): string {
@@ -265,8 +529,8 @@ async function ensureSubject(name: string): Promise<number> {
   // Create subject with a code
   const code = name.substring(0, 3).toUpperCase();
   const inserted = await db.execute<{ id: number }>(sql`
-    INSERT INTO subjects (name, code, description, is_active)
-    VALUES (${name}, ${code}, ${`${name} - NSC Subject`}, true)
+    INSERT INTO subjects (name, code, description, min_grade, max_grade, is_active)
+    VALUES (${name}, ${code}, ${`${name} - NSC Subject`}, 10, 12, true)
     RETURNING id
   `);
 
@@ -279,7 +543,9 @@ async function ensureNscPaper(
   year: number,
   session: string,
   paperNumber: number,
-  language: string
+  language: string,
+  totalMarks?: number,
+  durationMinutes?: number
 ): Promise<number> {
   const existing = await db.execute<{ id: number }>(sql`
     SELECT id FROM nsc_papers
@@ -291,12 +557,40 @@ async function ensureNscPaper(
   `);
 
   if (existing.rows[0]) {
+    if (totalMarks !== undefined || durationMinutes !== undefined) {
+      await db.execute(sql`
+        UPDATE nsc_papers
+        SET
+          total_marks = COALESCE(${totalMarks}, total_marks),
+          duration_minutes = COALESCE(${durationMinutes}, duration_minutes),
+          updated_at = now()
+        WHERE id = ${existing.rows[0].id}
+      `);
+    }
     return existing.rows[0].id;
   }
 
   const inserted = await db.execute<{ id: number }>(sql`
-    INSERT INTO nsc_papers (subject_id, grade_id, year, session, paper_number, language)
-    VALUES (${subjectId}, ${gradeId}, ${year}, ${session}::exam_session, ${paperNumber}, ${language})
+    INSERT INTO nsc_papers (
+      subject_id,
+      grade_id,
+      year,
+      session,
+      paper_number,
+      language,
+      total_marks,
+      duration_minutes
+    )
+    VALUES (
+      ${subjectId},
+      ${gradeId},
+      ${year},
+      ${session}::exam_session,
+      ${paperNumber},
+      ${language},
+      ${totalMarks ?? null},
+      ${durationMinutes ?? null}
+    )
     RETURNING id
   `);
 
@@ -356,25 +650,134 @@ async function ensureNscPaperDocument(
   `);
 }
 
+async function ensureNscPaperQuestion(
+  nscPaperId: number,
+  question: SampleQuestion,
+): Promise<void> {
+  const existing = await db.execute<{ id: number }>(sql`
+    SELECT id
+    FROM nsc_paper_questions
+    WHERE nsc_paper_id = ${nscPaperId}
+      AND question_number = ${question.questionNumber}
+  `);
+
+  if (existing.rows[0]) {
+    await db.execute(sql`
+      UPDATE nsc_paper_questions
+      SET
+        question_text = ${question.questionText},
+        marks = ${question.marks},
+        section_label = ${question.sectionLabel ?? null},
+        memo_text = ${question.memoText ?? null}
+      WHERE id = ${existing.rows[0].id}
+    `);
+    return;
+  }
+
+  await db.execute(sql`
+    INSERT INTO nsc_paper_questions (
+      nsc_paper_id,
+      question_number,
+      question_text,
+      marks,
+      section_label,
+      memo_text
+    )
+    VALUES (
+      ${nscPaperId},
+      ${question.questionNumber},
+      ${question.questionText},
+      ${question.marks},
+      ${question.sectionLabel ?? null},
+      ${question.memoText ?? null}
+    )
+  `);
+}
+
+async function seedSamplePapers(curriculumId: number) {
+  console.log("Using built-in NSC sample papers dataset.");
+
+  const gradeCache = new Map<number, number>();
+  const subjectSet = new Set<string>();
+  let papersCount = 0;
+  let documentsCount = 0;
+  let questionsCount = 0;
+
+  for (const samplePaper of SAMPLE_PAPERS) {
+    subjectSet.add(samplePaper.subject);
+    const subjectId = await ensureSubject(samplePaper.subject);
+
+    let gradeId: number | null = null;
+    if (gradeCache.has(samplePaper.grade)) {
+      gradeId = gradeCache.get(samplePaper.grade)!;
+    } else {
+      gradeId = await ensureGrade(curriculumId, samplePaper.grade);
+      gradeCache.set(samplePaper.grade, gradeId);
+    }
+
+    const nscPaperId = await ensureNscPaper(
+      subjectId,
+      gradeId,
+      samplePaper.year,
+      samplePaper.session,
+      samplePaper.paperNumber,
+      samplePaper.language,
+      samplePaper.totalMarks,
+      samplePaper.durationMinutes,
+    );
+    papersCount++;
+
+    for (const document of samplePaper.documents) {
+      await ensureNscPaperDocument(
+        nscPaperId,
+        document.docType,
+        document.title,
+        document.fileUrl,
+        document.filePath,
+        document.language ?? samplePaper.language,
+      );
+      documentsCount++;
+    }
+
+    for (const question of samplePaper.questions) {
+      await ensureNscPaperQuestion(nscPaperId, question);
+      questionsCount++;
+    }
+  }
+
+  console.log("\n=== Sample Seeding Complete ===");
+  console.log(`Subjects processed: ${subjectSet.size}`);
+  console.log(`Papers created/updated: ${papersCount}`);
+  console.log(`Documents created/updated: ${documentsCount}`);
+  console.log(`Questions created/updated: ${questionsCount}`);
+}
+
 // ============ MAIN SEEDING FUNCTION ============
 
 async function seedNscPapers() {
   console.log("Starting NSC Papers seeding...\n");
   console.log(`Education folder: ${EDUCATION_FOLDER}`);
 
-  if (!fs.existsSync(EDUCATION_FOLDER)) {
-    console.error("Education folder not found!");
-    process.exit(1);
-  }
-
   // Ensure CAPS curriculum exists
   const curriculumId = await ensureCurriculum();
   console.log(`CAPS Curriculum ID: ${curriculumId}`);
+
+  if (!fs.existsSync(EDUCATION_FOLDER)) {
+    console.log("Education folder not found, seeding built-in sample papers instead.");
+    await seedSamplePapers(curriculumId);
+    return;
+  }
 
   // Get all subject folders
   const subjectFolders = fs.readdirSync(EDUCATION_FOLDER, { withFileTypes: true })
     .filter(d => d.isDirectory())
     .map(d => d.name);
+
+  if (subjectFolders.length === 0) {
+    console.log("No subject folders found in Education, seeding built-in sample papers instead.");
+    await seedSamplePapers(curriculumId);
+    return;
+  }
 
   console.log(`Found subjects: ${subjectFolders.join(", ")}\n`);
 
