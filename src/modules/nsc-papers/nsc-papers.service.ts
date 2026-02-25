@@ -328,16 +328,20 @@ type CreateQuestionInput = {
   questionNumber?: string;
   questionText: string;
   marks: number;
+  difficulty?: string;
   topicId?: number;
   sectionLabel?: string;
   imageUrl?: string;
   memoText?: string;
   type?: string;
+  options?: unknown[];
+  correctAnswer?: unknown;
   answerFormat?: string;
   rubricCriteria?: RubricCriterion[];
   modelAnswer?: string;
   language?: string;
   starterCode?: string;
+  practicalMode?: string;
   tags?: string[];
   metadata?: Record<string, unknown>;
 };
@@ -391,15 +395,24 @@ export async function getQuestionById(id: number) {
 
 function buildQuestionMetadata(
   base: Record<string, unknown>,
-  input: Pick<CreateQuestionInput, "type" | "answerFormat" | "rubricCriteria" | "modelAnswer" | "language" | "starterCode" | "tags">,
+  input: Pick<CreateQuestionInput,
+    | "type" | "options" | "correctAnswer"
+    | "answerFormat" | "rubricCriteria" | "modelAnswer"
+    | "language" | "starterCode" | "practicalMode"
+    | "difficulty" | "tags"
+  >,
 ): Record<string, unknown> {
   const meta = { ...base };
   if (input.type !== undefined) meta.type = input.type;
+  if (input.options !== undefined) meta.options = input.options;
+  if (input.correctAnswer !== undefined) meta.correctAnswer = input.correctAnswer;
   if (input.answerFormat !== undefined) meta.answerFormat = input.answerFormat;
   if (input.rubricCriteria !== undefined) meta.rubricCriteria = input.rubricCriteria;
   if (input.modelAnswer !== undefined) meta.modelAnswer = input.modelAnswer;
   if (input.language !== undefined) meta.language = input.language;
   if (input.starterCode !== undefined) meta.starterCode = input.starterCode;
+  if (input.practicalMode !== undefined) meta.practicalMode = input.practicalMode;
+  if (input.difficulty !== undefined) meta.difficulty = input.difficulty;
   if (input.tags !== undefined) meta.tags = input.tags;
   return meta;
 }
@@ -450,11 +463,15 @@ export async function updateQuestion(id: number, input: UpdateQuestionInput) {
 
   const hasMetaFields =
     input.type !== undefined ||
+    input.options !== undefined ||
+    input.correctAnswer !== undefined ||
     input.answerFormat !== undefined ||
     input.rubricCriteria !== undefined ||
     input.modelAnswer !== undefined ||
     input.language !== undefined ||
     input.starterCode !== undefined ||
+    input.practicalMode !== undefined ||
+    input.difficulty !== undefined ||
     input.tags !== undefined ||
     input.metadata !== undefined;
 

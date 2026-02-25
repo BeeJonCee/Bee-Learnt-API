@@ -282,6 +282,7 @@ export const nscPaperCreateSchema = z.object({
   title: z.string().max(200).optional(),
   instructions: z.string().optional(),
   strictMode: z.boolean().optional(),
+  isProcessed: z.boolean().optional(),
   sections: z
     .array(
       z.object({
@@ -292,6 +293,8 @@ export const nscPaperCreateSchema = z.object({
       }),
     )
     .optional(),
+  // Allow freeform metadata JSONB (used by the builder to store sections, strictMode, etc.)
+  metadata: z.record(z.unknown()).optional(),
 });
 
 export const nscPaperUpdateSchema = nscPaperCreateSchema.partial();
@@ -325,6 +328,7 @@ export const nscPaperQuestionCreateSchema = z.object({
   modelAnswer: z.string().optional(),
   language: z.string().optional(),
   starterCode: z.string().optional(),
+  practicalMode: z.enum(["editor", "upload", "both"]).optional(),
   tags: z.array(z.string()).optional(),
 });
 
