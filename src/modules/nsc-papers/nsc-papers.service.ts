@@ -219,7 +219,27 @@ export async function updatePaper(id: number, input: UpdatePaperInput) {
   if (input.totalMarks !== undefined) updateData.totalMarks = input.totalMarks;
   if (input.durationMinutes !== undefined) updateData.durationMinutes = input.durationMinutes;
   if (input.isProcessed !== undefined) updateData.isProcessed = input.isProcessed;
-  if (input.metadata !== undefined) updateData.metadata = input.metadata;
+
+  // Merge metadata fields (title, instructions, strictMode, sections) with existing metadata
+  const hasMetaFields =
+    input.title !== undefined ||
+    input.instructions !== undefined ||
+    input.strictMode !== undefined ||
+    input.sections !== undefined ||
+    input.metadata !== undefined;
+
+  if (hasMetaFields) {
+    const [existing] = await db
+      .select({ metadata: nscPapers.metadata })
+      .from(nscPapers)
+      .where(eq(nscPapers.id, id));
+    const base: Record<string, unknown> = { ...(existing?.metadata ?? {}), ...(input.metadata ?? {}) };
+    if (input.title !== undefined) base.title = input.title;
+    if (input.instructions !== undefined) base.instructions = input.instructions;
+    if (input.strictMode !== undefined) base.strictMode = input.strictMode;
+    if (input.sections !== undefined) base.sections = input.sections;
+    updateData.metadata = base;
+  }
 
   const [updated] = await db
     .update(nscPapers)

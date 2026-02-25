@@ -25,24 +25,27 @@ import {
 // ============ PAPERS ============
 
 export const listPapersHandler = asyncHandler(async (req, res) => {
-  const subjectId = req.query.subjectId as string | undefined;
-  const year = req.query.year as string | undefined;
-  const session = req.query.session as string | undefined;
-  const paperNumber = req.query.paperNumber as string | undefined;
-  const language = req.query.language as string | undefined;
-  const isProcessed = req.query.isProcessed as string | undefined;
-  const limit = req.query.limit as string | undefined;
-  const offset = req.query.offset as string | undefined;
+  // req.query is already coerced by validateQuery(nscPaperListQuerySchema)
+  const q = req.query as {
+    subjectId?: number;
+    year?: number;
+    session?: string;
+    paperNumber?: number;
+    language?: string;
+    isProcessed?: boolean;
+    limit?: number;
+    offset?: number;
+  };
 
   const result = await listPapers({
-    subjectId: subjectId ? Number(subjectId) : undefined,
-    year: year ? Number(year) : undefined,
-    session: session as any,
-    paperNumber: paperNumber ? Number(paperNumber) : undefined,
-    language: language as string,
-    isProcessed: isProcessed !== undefined ? isProcessed === "true" : undefined,
-    limit: limit ? Number(limit) : undefined,
-    offset: offset ? Number(offset) : undefined,
+    subjectId: q.subjectId,
+    year: q.year,
+    session: q.session as any,
+    paperNumber: q.paperNumber,
+    language: q.language,
+    isProcessed: q.isProcessed,
+    limit: q.limit,
+    offset: q.offset,
   });
 
   // Keep `papers` for frontend compatibility while exposing canonical `items`.
@@ -143,7 +146,23 @@ export const createDocumentHandler = asyncHandler(async (req, res) => {
     return;
   }
 
-  const created = await createDocument({ ...req.body, nscPaperId: paperId });
+  const { title, fileUrl, docType, language, mimeType, fileSize } = req.body as {
+    title: string;
+    fileUrl: string;
+    docType: string;
+    language?: string;
+    mimeType?: string;
+    fileSize?: number;
+  };
+  const created = await createDocument({
+    nscPaperId: paperId,
+    title,
+    fileUrl,
+    docType: docType as any,
+    language,
+    mimeType,
+    fileSize,
+  });
   res.status(201).json(created);
 });
 

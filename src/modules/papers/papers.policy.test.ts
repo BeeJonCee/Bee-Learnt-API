@@ -10,14 +10,17 @@ test("assertDraftPaperStatus allows draft status", () => {
   assert.doesNotThrow(() => assertDraftPaperStatus("draft"));
 });
 
-test("assertDraftPaperStatus rejects non-draft status with HttpError", () => {
-  assert.throws(
-    () => assertDraftPaperStatus("published"),
-    (error) =>
-      error instanceof HttpError &&
-      error.status === 400 &&
-      error.message === "Only draft papers can be edited",
-  );
+test("assertDraftPaperStatus rejects each non-draft lifecycle status with HttpError", () => {
+  for (const status of ["published", "closed", "marking", "released", "archived"]) {
+    assert.throws(
+      () => assertDraftPaperStatus(status),
+      (error) =>
+        error instanceof HttpError &&
+        error.status === 400 &&
+        error.message === "Only draft papers can be edited",
+      `expected HttpError for status "${status}"`,
+    );
+  }
 });
 
 test("student visible paper statuses exclude draft and archived", () => {

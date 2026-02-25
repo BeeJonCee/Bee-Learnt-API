@@ -268,6 +268,12 @@ export const nscPaperListQuerySchema = z.object({
   subjectId: z.coerce.number().int().positive().optional(),
   paperType: z.string().optional(),
   grade: z.coerce.number().int().optional(),
+  session: z.enum(["november", "may_june", "february_march", "supplementary", "exemplar"]).optional(),
+  paperNumber: z.coerce.number().int().positive().optional(),
+  language: z.string().optional(),
+  isProcessed: z.coerce.boolean().optional(),
+  limit: z.coerce.number().int().positive().max(200).optional(),
+  offset: z.coerce.number().int().nonnegative().optional(),
 });
 
 export const nscPaperCreateSchema = z.object({
@@ -302,7 +308,18 @@ export const nscPaperUpdateSchema = nscPaperCreateSchema.partial();
 export const nscPaperDocumentCreateSchema = z.object({
   title: z.string().min(1).max(200),
   fileUrl: z.string().url(),
-  documentType: z.enum(["question_paper", "memo", "marking_guideline"]).optional(),
+  docType: z.enum([
+    "question_paper",
+    "memorandum",
+    "marking_guideline",
+    "answer_book",
+    "data_files",
+    "addendum",
+    "formula_sheet",
+  ]),
+  language: z.string().optional(),
+  mimeType: z.string().optional(),
+  fileSize: z.number().int().positive().optional(),
 });
 
 export const nscPaperQuestionCreateSchema = z.object({
@@ -330,6 +347,7 @@ export const nscPaperQuestionCreateSchema = z.object({
   starterCode: z.string().optional(),
   practicalMode: z.enum(["editor", "upload", "both"]).optional(),
   tags: z.array(z.string()).optional(),
+  imageUrl: z.string().url().optional(),
 });
 
 export const nscPaperQuestionUpdateSchema = nscPaperQuestionCreateSchema.partial();

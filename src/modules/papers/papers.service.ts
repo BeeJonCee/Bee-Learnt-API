@@ -205,14 +205,6 @@ export async function publishPaper(id: number) {
   if (Number(qCount) === 0) {
     throw new HttpError("Paper must have at least one question before publishing", 400);
   }
-  const [{ value: assignmentCount }] = await db
-    .select({ value: count() })
-    .from(paperAssignments)
-    .where(eq(paperAssignments.assessmentId, id));
-  if (Number(assignmentCount) === 0) {
-    throw new HttpError("Paper must be assigned to at least one student before publishing", 400);
-  }
-
   const [updated] = await db
     .update(assessments)
     .set({ status: "published", updatedAt: new Date() })

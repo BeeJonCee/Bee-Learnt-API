@@ -12,7 +12,7 @@ export class NSCImportService {
    * Import all questions from an NSC paper into the question bank
    * @param nscPaperId - The NSC paper ID
    * @param createdBy - User ID of the admin importing
-   * @returns Array of created question bank item IDs
+   * @returns Object with imported IDs, skipped IDs, and per-question errors
    */
   async importPaperToQuestionBank(
     nscPaperId: number,

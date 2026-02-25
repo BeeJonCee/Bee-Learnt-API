@@ -9,28 +9,61 @@ import { db } from "../core/database/index.js";
  * NSC Papers Seeding Script
  *
  * Walks the Education folder and seeds:
- * - curricula
- * - grades
- * - subjects (if not existing)
- * - nsc_papers
- * - nsc_paper_documents
+ *   curricula → grades → subjects → nsc_papers → nsc_paper_documents
+ *
+ * Education folder layout expected:
+ *   Education/
+ *     Information Technology/
+ *       Grade 10/
+ *       Grade 11/
+ *       Grade 12/
+ *         TextBook/
+ *         Examplars/2018/
+ *         Past Papers/2018..2025/
+ *         Supplementary Exams/2018-2019/
+ *     Mathematics/
+ *       Grade 10/
+ *         2015/ 2016/ 2017/ 2018/
  */
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const EDUCATION_FOLDER = path.join(__dirname, "../../Education");
+const EDUCATION_FOLDER = path.join(__dirname, "../Education");
 
-// ============ TYPE DEFINITIONS ============
+// ─── Known paper specifications ──────────────────────────────────────────────
+// Key: "Subject|grade|paperNumber"
+
+const PAPER_SPECS: Record<string, { totalMarks: number; durationMinutes: number }> = {
+  // Information Technology NSC
+  "Information Technology|12|1": { totalMarks: 150, durationMinutes: 120 },
+  "Information Technology|12|2": { totalMarks: 150, durationMinutes: 180 },
+  "Information Technology|11|1": { totalMarks: 120, durationMinutes: 120 },
+  "Information Technology|11|2": { totalMarks: 150, durationMinutes: 180 },
+  "Information Technology|10|1": { totalMarks: 120, durationMinutes: 120 },
+  "Information Technology|10|2": { totalMarks: 120, durationMinutes: 120 },
+  // Mathematics NSC
+  "Mathematics|12|1": { totalMarks: 150, durationMinutes: 180 },
+  "Mathematics|12|2": { totalMarks: 150, durationMinutes: 180 },
+  "Mathematics|11|1": { totalMarks: 150, durationMinutes: 180 },
+  "Mathematics|11|2": { totalMarks: 150, durationMinutes: 180 },
+  "Mathematics|10|1": { totalMarks: 100, durationMinutes: 120 },
+  "Mathematics|10|2": { totalMarks: 100, durationMinutes: 120 },
+};
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type ExamSession = "november" | "may_june" | "february_march" | "supplementary" | "exemplar";
+type DocType = "question_paper" | "memorandum" | "marking_guideline" | "answer_book" | "data_files" | "addendum" | "formula_sheet";
 
 interface ParsedFile {
   subject: string;
   grade: number;
   year: number;
-  session: "november" | "may_june" | "february_march" | "supplementary" | "exemplar";
+  session: ExamSession;
   paperNumber: number;
   language: string;
-  docType: "question_paper" | "memorandum" | "marking_guideline" | "answer_book" | "data_files" | "addendum" | "formula_sheet";
-  filePath: string;
+  docType: DocType;
+  filePath: string;   // forward-slash normalised absolute path
   fileName: string;
 }
 
@@ -43,7 +76,7 @@ type SampleQuestion = {
 };
 
 type SampleDocument = {
-  docType: ParsedFile["docType"];
+  docType: DocType;
   title: string;
   fileUrl: string;
   filePath: string;
@@ -54,7 +87,7 @@ type SamplePaper = {
   subject: string;
   grade: number;
   year: number;
-  session: ParsedFile["session"];
+  session: ExamSession;
   paperNumber: number;
   language: string;
   totalMarks?: number;
@@ -62,6 +95,8 @@ type SamplePaper = {
   documents: SampleDocument[];
   questions: SampleQuestion[];
 };
+
+// ─── Fallback sample data (used when Education folder absent) ─────────────────
 
 const SAMPLE_PAPERS: SamplePaper[] = [
   {
@@ -76,57 +111,23 @@ const SAMPLE_PAPERS: SamplePaper[] = [
     documents: [
       {
         docType: "question_paper",
-        title: "Mathematics Grade 12 November 2024 Paper 1",
+        title: "Mathematics Grade 12 P1 November 2024 Question Paper",
         fileUrl: "samples/nsc/mathematics/2024/november/p1-question-paper.pdf",
         filePath: "samples/nsc/mathematics/2024/november/p1-question-paper.pdf",
       },
       {
         docType: "memorandum",
-        title: "Mathematics Grade 12 November 2024 Paper 1 Memorandum",
+        title: "Mathematics Grade 12 P1 November 2024 Memorandum",
         fileUrl: "samples/nsc/mathematics/2024/november/p1-memorandum.pdf",
         filePath: "samples/nsc/mathematics/2024/november/p1-memorandum.pdf",
       },
     ],
     questions: [
-      {
-        questionNumber: "1.1",
-        questionText: "Solve for x: 2x + 7 = 31.",
-        marks: 2,
-        sectionLabel: "Algebra",
-        memoText: "x = 12",
-      },
-      {
-        questionNumber: "2.1",
-        questionText:
-          "Determine the equation of the straight line passing through (2, 5) and (6, 13).",
-        marks: 4,
-        sectionLabel: "Functions",
-        memoText: "Gradient m = 2, equation y = 2x + 1.",
-      },
-      {
-        questionNumber: "3.1",
-        questionText:
-          "Find the derivative of f(x) = 3x^2 - 4x + 9 and evaluate f'(2).",
-        marks: 4,
-        sectionLabel: "Calculus",
-        memoText: "f'(x) = 6x - 4, so f'(2) = 8.",
-      },
-      {
-        questionNumber: "4.1",
-        questionText:
-          "A geometric sequence has first term 5 and common ratio 2. Write down the first four terms.",
-        marks: 3,
-        sectionLabel: "Sequences",
-        memoText: "5, 10, 20, 40.",
-      },
-      {
-        questionNumber: "5.1",
-        questionText:
-          "Given P(A) = 0.4, P(B) = 0.3 and P(A and B) = 0.1, calculate P(A or B).",
-        marks: 3,
-        sectionLabel: "Probability",
-        memoText: "P(A or B) = 0.4 + 0.3 - 0.1 = 0.6.",
-      },
+      { questionNumber: "1.1", questionText: "Solve for x: 2x + 7 = 31.", marks: 2, sectionLabel: "Algebra", memoText: "x = 12" },
+      { questionNumber: "2.1", questionText: "Determine the equation of the straight line passing through (2, 5) and (6, 13).", marks: 4, sectionLabel: "Functions", memoText: "Gradient m = 2, equation y = 2x + 1." },
+      { questionNumber: "3.1", questionText: "Find the derivative of f(x) = 3x² - 4x + 9 and evaluate f'(2).", marks: 4, sectionLabel: "Calculus", memoText: "f'(x) = 6x - 4, so f'(2) = 8." },
+      { questionNumber: "4.1", questionText: "A geometric sequence has first term 5 and common ratio 2. Write down the first four terms.", marks: 3, sectionLabel: "Sequences", memoText: "5, 10, 20, 40." },
+      { questionNumber: "5.1", questionText: "Given P(A) = 0.4, P(B) = 0.3 and P(A and B) = 0.1, calculate P(A or B).", marks: 3, sectionLabel: "Probability", memoText: "P(A or B) = 0.4 + 0.3 - 0.1 = 0.6." },
     ],
   },
   {
@@ -141,101 +142,21 @@ const SAMPLE_PAPERS: SamplePaper[] = [
     documents: [
       {
         docType: "question_paper",
-        title: "Mathematics Grade 12 November 2024 Paper 2",
+        title: "Mathematics Grade 12 P2 November 2024 Question Paper",
         fileUrl: "samples/nsc/mathematics/2024/november/p2-question-paper.pdf",
         filePath: "samples/nsc/mathematics/2024/november/p2-question-paper.pdf",
       },
       {
         docType: "memorandum",
-        title: "Mathematics Grade 12 November 2024 Paper 2 Memorandum",
+        title: "Mathematics Grade 12 P2 November 2024 Memorandum",
         fileUrl: "samples/nsc/mathematics/2024/november/p2-memorandum.pdf",
         filePath: "samples/nsc/mathematics/2024/november/p2-memorandum.pdf",
       },
     ],
     questions: [
-      {
-        questionNumber: "1.1",
-        questionText:
-          "Calculate the missing side in a right triangle where hypotenuse is 13 and one side is 5.",
-        marks: 3,
-        sectionLabel: "Trigonometry",
-        memoText: "Using Pythagoras: side = sqrt(13^2 - 5^2) = 12.",
-      },
-      {
-        questionNumber: "2.1",
-        questionText:
-          "Find the area of a triangle with sides 8 and 10 and included angle 30 degrees.",
-        marks: 4,
-        sectionLabel: "Trigonometry",
-        memoText: "Area = 1/2 * 8 * 10 * sin(30) = 20 square units.",
-      },
-      {
-        questionNumber: "3.1",
-        questionText:
-          "Determine the equation of the circle with centre (2, -1) and radius 5.",
-        marks: 3,
-        sectionLabel: "Analytical Geometry",
-        memoText: "(x - 2)^2 + (y + 1)^2 = 25.",
-      },
-      {
-        questionNumber: "4.1",
-        questionText:
-          "If vectors a = (3, -2) and b = (1, 4), calculate a + b.",
-        marks: 2,
-        sectionLabel: "Vectors",
-        memoText: "a + b = (4, 2).",
-      },
-    ],
-  },
-  {
-    subject: "Physical Sciences",
-    grade: 12,
-    year: 2023,
-    session: "november",
-    paperNumber: 1,
-    language: "English",
-    totalMarks: 150,
-    durationMinutes: 180,
-    documents: [
-      {
-        docType: "question_paper",
-        title: "Physical Sciences Grade 12 November 2023 Paper 1",
-        fileUrl: "samples/nsc/physical-sciences/2023/november/p1-question-paper.pdf",
-        filePath: "samples/nsc/physical-sciences/2023/november/p1-question-paper.pdf",
-      },
-      {
-        docType: "memorandum",
-        title: "Physical Sciences Grade 12 November 2023 Paper 1 Memorandum",
-        fileUrl: "samples/nsc/physical-sciences/2023/november/p1-memorandum.pdf",
-        filePath: "samples/nsc/physical-sciences/2023/november/p1-memorandum.pdf",
-      },
-    ],
-    questions: [
-      {
-        questionNumber: "1.1",
-        questionText:
-          "State Newton's second law of motion and identify the unit of force.",
-        marks: 3,
-        sectionLabel: "Mechanics",
-        memoText:
-          "Net force is equal to mass multiplied by acceleration. Unit of force is Newton (N).",
-      },
-      {
-        questionNumber: "2.1",
-        questionText:
-          "Calculate the acceleration of a 2 kg object acted on by a net force of 10 N.",
-        marks: 2,
-        sectionLabel: "Mechanics",
-        memoText: "a = F/m = 10/2 = 5 m/s^2.",
-      },
-      {
-        questionNumber: "3.1",
-        questionText:
-          "Define oxidation in terms of electron transfer.",
-        marks: 2,
-        sectionLabel: "Chemistry",
-        memoText: "Oxidation is the loss of electrons.",
-      },
+      { questionNumber: "1.1", questionText: "Calculate the missing side in a right triangle where hypotenuse is 13 and one side is 5.", marks: 3, sectionLabel: "Trigonometry", memoText: "Using Pythagoras: side = √(13² − 5²) = 12." },
+      { questionNumber: "2.1", questionText: "Find the area of a triangle with sides 8 and 10 and included angle 30°.", marks: 4, sectionLabel: "Trigonometry", memoText: "Area = ½ × 8 × 10 × sin30° = 20 square units." },
+      { questionNumber: "3.1", questionText: "Determine the equation of the circle with centre (2, −1) and radius 5.", marks: 3, sectionLabel: "Analytical Geometry", memoText: "(x − 2)² + (y + 1)² = 25." },
     ],
   },
   {
@@ -246,189 +167,201 @@ const SAMPLE_PAPERS: SamplePaper[] = [
     paperNumber: 1,
     language: "English",
     totalMarks: 150,
-    durationMinutes: 180,
+    durationMinutes: 120,
     documents: [
       {
         docType: "question_paper",
-        title: "Information Technology Grade 12 May/June 2023 Paper 1",
+        title: "Information Technology Grade 12 P1 May/June 2023 Question Paper",
         fileUrl: "samples/nsc/information-technology/2023/may-june/p1-question-paper.pdf",
         filePath: "samples/nsc/information-technology/2023/may-june/p1-question-paper.pdf",
       },
       {
         docType: "memorandum",
-        title: "Information Technology Grade 12 May/June 2023 Paper 1 Memorandum",
+        title: "Information Technology Grade 12 P1 May/June 2023 Memorandum",
         fileUrl: "samples/nsc/information-technology/2023/may-june/p1-memorandum.pdf",
         filePath: "samples/nsc/information-technology/2023/may-june/p1-memorandum.pdf",
       },
       {
         docType: "data_files",
-        title: "Information Technology Grade 12 May/June 2023 Paper 1 Data Files",
+        title: "Information Technology Grade 12 P1 May/June 2023 Data Files",
         fileUrl: "samples/nsc/information-technology/2023/may-june/p1-data-files.zip",
         filePath: "samples/nsc/information-technology/2023/may-june/p1-data-files.zip",
       },
     ],
     questions: [
-      {
-        questionNumber: "1.1",
-        questionText:
-          "Write a SQL query to return all students with marks greater than 80 from the Results table.",
-        marks: 5,
-        sectionLabel: "Database",
-        memoText: "SELECT * FROM Results WHERE mark > 80;",
-      },
-      {
-        questionNumber: "2.1",
-        questionText:
-          "Explain the difference between a while loop and a for loop in programming.",
-        marks: 4,
-        sectionLabel: "Programming",
-        memoText:
-          "A for loop is typically used when the number of iterations is known. A while loop is used when the condition controls repetition and iterations are not predetermined.",
-      },
-      {
-        questionNumber: "3.1",
-        questionText:
-          "What is encapsulation in object-oriented programming?",
-        marks: 3,
-        sectionLabel: "OOP",
-        memoText:
-          "Encapsulation is bundling data and methods in a class while restricting direct access to internal state.",
-      },
+      { questionNumber: "1.1", questionText: "Write a SQL query to return all students with marks greater than 80 from the Results table.", marks: 5, sectionLabel: "Database", memoText: "SELECT * FROM Results WHERE mark > 80;" },
+      { questionNumber: "2.1", questionText: "Explain the difference between a while loop and a for loop in programming.", marks: 4, sectionLabel: "Programming", memoText: "A for loop is used when the number of iterations is known. A while loop tests a condition each iteration." },
+      { questionNumber: "3.1", questionText: "What is encapsulation in object-oriented programming?", marks: 3, sectionLabel: "OOP", memoText: "Encapsulation bundles data and methods in a class and restricts direct access to internal state." },
     ],
   },
 ];
 
-// ============ FILE PARSING HELPERS ============
+// ─── File parsing ─────────────────────────────────────────────────────────────
 
-function normalizeSubject(rawSubject: string): string {
-  return rawSubject.trim();
+// File extensions that represent exam documents
+const VALID_EXTENSIONS = new Set([".pdf", ".docx", ".doc", ".zip", ".exe"]);
+
+// Patterns in filenames that indicate non-exam material (textbooks, guides, etc.)
+const SKIP_PATTERNS = [
+  /\b(lb|lh)\b/i,              // Learner Book / Learner Handout codes
+  /-LB[-_]/i,                  // e.g. Gr10_IT-Theory-LB-Print
+  /learner[_\s-]?book/i,
+  /teacher[_\s-]?guide/i,
+  /teacher['s\s]*guide/i,
+  /\bpat\b/i,                  // Practical Assessment Task
+  /study[_\s-]?guide/i,
+  /workbook/i,
+  /revision/i,
+  /tutoring/i,
+  /full[_\s-]?revision/i,
+  /term\d[_\s-]study/i,
+  /\bcaps\b/i,
+  /teacher['s]*\s/i,
+];
+
+function shouldSkipFile(fileName: string): boolean {
+  return SKIP_PATTERNS.some(re => re.test(fileName));
 }
 
-function parseGradeFromPath(filePath: string): number | null {
-  // Match "Grade 10", "grade 12", "GR 12", etc.
-  const gradeMatch = filePath.match(/grade\s*(\d+)|gr\s*(\d+)/i);
-  if (gradeMatch) {
-    return parseInt(gradeMatch[1] || gradeMatch[2], 10);
-  }
+/**
+ * Skip files that live inside extracted data archive folders
+ * (e.g. DataJUN2025/, DataENGNov2019/ — these are Delphi project trees,
+ *  not standalone exam documents; the parent .exe archive is what gets seeded).
+ */
+function shouldSkipByPath(normalizedPath: string): boolean {
+  return /\/Data(?:ENG|JUN|Jun)[A-Za-z]*\d{4}\//.test(normalizedPath);
+}
+
+/** Normalise to forward-slash path — must be called before any path parsing */
+function normalizePath(p: string): string {
+  return p.replace(/\\/g, "/");
+}
+
+function parseGradeFromPath(normalizedPath: string): number | null {
+  const m = normalizedPath.match(/grade\s*(\d+)|\/gr\s*(\d+)\//i);
+  if (m) return parseInt(m[1] ?? m[2], 10);
   return null;
 }
 
-function parseSession(fileName: string, folderPath: string): ParsedFile["session"] {
-  const lowerPath = (fileName + folderPath).toLowerCase();
+function parseYear(normalizedPath: string, fileName: string): number | null {
+  // Year in filename takes precedence (e.g. "Nov 2018 Eng")
+  const fileYear = fileName.match(/\b(20\d{2})\b/);
+  if (fileYear) return parseInt(fileYear[1], 10);
 
-  if (lowerPath.includes("exemplar")) {
-    return "exemplar";
-  }
-  if (lowerPath.includes("supplementary") || lowerPath.includes("feb-march") || lowerPath.includes("february")) {
-    return "february_march";
-  }
-  if (lowerPath.includes("may-june") || lowerPath.includes("mayjune") || lowerPath.includes("jun")) {
-    return "may_june";
-  }
-  // Default to November for Nov or when no session specified
+  // Year as a folder segment: .../2018/...
+  const folderYear = normalizedPath.match(/\/(\d{4})\//);
+  if (folderYear) return parseInt(folderYear[1], 10);
+
+  // Year-range folder: .../2018-2019/...
+  const rangeYear = normalizedPath.match(/\/(\d{4})-\d{4}\//);
+  if (rangeYear) return parseInt(rangeYear[1], 10);
+
+  return null;
+}
+
+function parseSession(normalizedPath: string, fileName: string): ExamSession {
+  const combined = (normalizedPath + "/" + fileName).toLowerCase();
+
+  if (combined.includes("exemplar")) return "exemplar";
+  if (
+    combined.includes("supplementary") ||
+    combined.includes("feb-march") ||
+    combined.includes("february_march") ||
+    combined.includes("feb/march") ||
+    /\bfeb\b/.test(combined)
+  ) return "february_march";
+  if (
+    combined.includes("may-june") ||
+    combined.includes("may_june") ||
+    combined.includes("may/june") ||
+    combined.includes("mayjune") ||
+    combined.includes("june") ||
+    /\bjun\b/.test(combined)
+  ) return "may_june";
+
+  // "Nov" or "November" → november (also the default)
   return "november";
 }
 
 function parsePaperNumber(fileName: string): number {
-  // Match P1, P2, Paper 1, Paper 2, etc.
-  const paperMatch = fileName.match(/\bP(\d)\b|paper\s*(\d)/i);
-  if (paperMatch) {
-    return parseInt(paperMatch[1] || paperMatch[2], 10);
-  }
-  return 1; // Default to paper 1
+  const m = fileName.match(/\bP(\d)\b|paper\s*(\d)/i);
+  if (m) return parseInt(m[1] ?? m[2], 10);
+  return 1;
 }
 
 function parseLanguage(fileName: string): string {
   const lower = fileName.toLowerCase();
-  if (lower.includes("afr") && lower.includes("eng")) {
-    return "English & Afrikaans";
-  }
-  if (lower.includes("afr")) {
-    return "Afrikaans";
-  }
+  if (lower.includes("afr") && lower.includes("eng")) return "English & Afrikaans";
+  if (lower.includes("afr")) return "Afrikaans";
   return "English";
 }
 
-function parseDocType(fileName: string): ParsedFile["docType"] {
+function parseDocType(fileName: string): DocType {
   const lower = fileName.toLowerCase();
   const ext = path.extname(fileName).toLowerCase();
 
-  // Data files
-  if (lower.startsWith("data") || lower.includes("data files") || lower.includes("learner files")) {
-    return "data_files";
-  }
-  if (ext === ".exe" || ext === ".zip") {
+  // Data / learner files first (ZIPs and EXEs are always data files)
+  if (ext === ".zip" || ext === ".exe") return "data_files";
+  if (/\bdata\b/.test(lower) || lower.includes("learner files") || lower.includes("data files")) {
     return "data_files";
   }
 
-  // Memorandum / Marking Guideline
-  if (lower.includes(" mg ") || lower.includes("_mg_") || lower.includes(" mg.")) {
+  // Marking guideline (MG marker)
+  if (/[\s_\-]mg[\s_\-.]/.test(lower) || lower.includes("marking guide")) {
     return "marking_guideline";
   }
-  if (lower.includes("memo")) {
-    return "memorandum";
-  }
+
+  // Memorandum
+  if (lower.includes("memo")) return "memorandum";
 
   // Answer book
-  if (lower.includes("answer book")) {
-    return "answer_book";
-  }
+  if (lower.includes("answer book") || lower.includes("answerbook")) return "answer_book";
 
   // Formula sheet
-  if (lower.includes("formula")) {
-    return "formula_sheet";
-  }
+  if (lower.includes("formula")) return "formula_sheet";
 
   // Addendum
-  if (lower.includes("addendum")) {
-    return "addendum";
-  }
+  if (lower.includes("addendum")) return "addendum";
 
-  // Default to question paper for PDFs and DOCXs
   return "question_paper";
 }
 
-function parseYear(filePath: string, fileName: string): number | null {
-  // Try to find year in filename first
-  const fileYearMatch = fileName.match(/\b(20\d{2})\b/);
-  if (fileYearMatch) {
-    return parseInt(fileYearMatch[1], 10);
-  }
+/** Build a human-readable document title */
+function buildTitle(parsed: ParsedFile): string {
+  const SESSION_LABELS: Record<ExamSession, string> = {
+    november: "November",
+    may_june: "May/June",
+    february_march: "Feb/March",
+    supplementary: "Supplementary",
+    exemplar: "Exemplar",
+  };
+  const DOC_LABELS: Record<DocType, string> = {
+    question_paper:   "Question Paper",
+    memorandum:       "Memorandum",
+    marking_guideline:"Marking Guideline",
+    answer_book:      "Answer Book",
+    data_files:       "Data Files",
+    addendum:         "Addendum",
+    formula_sheet:    "Formula Sheet",
+  };
 
-  // Try to find year in path (folder structure)
-  const pathYearMatch = filePath.match(/\/(\d{4})\//);
-  if (pathYearMatch) {
-    return parseInt(pathYearMatch[1], 10);
-  }
-
-  // Try folder names like "2018-2019"
-  const rangeMatch = filePath.match(/\/(\d{4})-\d{4}\//);
-  if (rangeMatch) {
-    return parseInt(rangeMatch[1], 10);
-  }
-
-  return null;
+  const session = SESSION_LABELS[parsed.session];
+  const docLabel = DOC_LABELS[parsed.docType];
+  const langSuffix = parsed.language !== "English" ? ` (${parsed.language})` : "";
+  return `${parsed.subject} Grade ${parsed.grade} P${parsed.paperNumber} ${session} ${parsed.year} ${docLabel}${langSuffix}`;
 }
 
-function parseFile(filePath: string, subject: string): ParsedFile | null {
+function parseFile(rawFilePath: string, subject: string): ParsedFile | null {
+  const filePath = normalizePath(rawFilePath);
   const fileName = path.basename(filePath);
   const ext = path.extname(fileName).toLowerCase();
 
-  // Skip non-document files (Delphi project files, etc.)
-  const validExtensions = [".pdf", ".docx", ".doc", ".exe", ".zip"];
-  if (!validExtensions.includes(ext)) {
-    return null;
-  }
-
-  // Skip study guides and revision materials (not NSC papers)
-  const lower = fileName.toLowerCase();
-  if (lower.includes("study_guide") || lower.includes("workbook") || lower.includes("tutoring") ||
-      lower.includes("revision") || lower.includes("caps") || lower.includes("pat")) {
-    return null;
-  }
+  if (!VALID_EXTENSIONS.has(ext)) return null;
+  if (shouldSkipFile(fileName)) return null;
+  if (shouldSkipByPath(filePath)) return null;
 
   const grade = parseGradeFromPath(filePath);
-  const year = parseYear(filePath, fileName);
+  const year  = parseYear(filePath, fileName);
 
   if (!grade || !year) {
     console.log(`  Skipping (no grade/year): ${fileName}`);
@@ -436,84 +369,65 @@ function parseFile(filePath: string, subject: string): ParsedFile | null {
   }
 
   return {
-    subject: normalizeSubject(subject),
+    subject: subject.trim(),
     grade,
     year,
-    session: parseSession(fileName, filePath),
+    session:     parseSession(filePath, fileName),
     paperNumber: parsePaperNumber(fileName),
-    language: parseLanguage(fileName),
-    docType: parseDocType(fileName),
-    filePath: filePath.replace(/\\/g, "/"),
+    language:    parseLanguage(fileName),
+    docType:     parseDocType(fileName),
+    filePath,
     fileName,
   };
 }
 
-// ============ FILE SYSTEM HELPERS ============
+// ─── Directory walker ─────────────────────────────────────────────────────────
 
 function walkDirectory(dir: string, subject: string): ParsedFile[] {
+  if (!fs.existsSync(dir)) return [];
+
   const results: ParsedFile[] = [];
 
-  if (!fs.existsSync(dir)) {
-    return results;
-  }
-
-  const items = fs.readdirSync(dir, { withFileTypes: true });
-
-  for (const item of items) {
+  for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
     const fullPath = path.join(dir, item.name);
-
     if (item.isDirectory()) {
       results.push(...walkDirectory(fullPath, subject));
     } else {
       const parsed = parseFile(fullPath, subject);
-      if (parsed) {
-        results.push(parsed);
-      }
+      if (parsed) results.push(parsed);
     }
   }
 
   return results;
 }
 
-// ============ DATABASE HELPERS ============
+// ─── Database helpers ─────────────────────────────────────────────────────────
 
 async function ensureCurriculum(): Promise<number> {
-  // Check if CAPS curriculum exists
   const existing = await db.execute<{ id: number }>(sql`
     SELECT id FROM curricula WHERE name = 'CAPS' AND country = 'South Africa'
   `);
+  if (existing.rows[0]) return existing.rows[0].id;
 
-  if (existing.rows[0]) {
-    return existing.rows[0].id;
-  }
-
-  // Create CAPS curriculum
   const inserted = await db.execute<{ id: number }>(sql`
     INSERT INTO curricula (name, country, description)
     VALUES ('CAPS', 'South Africa', 'Curriculum and Assessment Policy Statement')
     RETURNING id
   `);
-
   return inserted.rows[0].id;
 }
 
 async function ensureGrade(curriculumId: number, level: number): Promise<number> {
-  const label = `Grade ${level}`;
-
   const existing = await db.execute<{ id: number }>(sql`
     SELECT id FROM grades WHERE curriculum_id = ${curriculumId} AND level = ${level}
   `);
-
-  if (existing.rows[0]) {
-    return existing.rows[0].id;
-  }
+  if (existing.rows[0]) return existing.rows[0].id;
 
   const inserted = await db.execute<{ id: number }>(sql`
     INSERT INTO grades (curriculum_id, level, label)
-    VALUES (${curriculumId}, ${level}, ${label})
+    VALUES (${curriculumId}, ${level}, ${"Grade " + level})
     RETURNING id
   `);
-
   return inserted.rows[0].id;
 }
 
@@ -521,49 +435,48 @@ async function ensureSubject(name: string): Promise<number> {
   const existing = await db.execute<{ id: number }>(sql`
     SELECT id FROM subjects WHERE name = ${name}
   `);
+  if (existing.rows[0]) return existing.rows[0].id;
 
-  if (existing.rows[0]) {
-    return existing.rows[0].id;
-  }
-
-  // Create subject with a code
-  const code = name.substring(0, 3).toUpperCase();
+  const code = name.replace(/[^A-Z]/gi, "").substring(0, 3).toUpperCase();
   const inserted = await db.execute<{ id: number }>(sql`
     INSERT INTO subjects (name, code, description, min_grade, max_grade, is_active)
-    VALUES (${name}, ${code}, ${`${name} - NSC Subject`}, 10, 12, true)
+    VALUES (${name}, ${code}, ${name + " — NSC Subject"}, 10, 12, true)
     RETURNING id
   `);
-
   return inserted.rows[0].id;
 }
 
 async function ensureNscPaper(
   subjectId: number,
   gradeId: number | null,
+  subject: string,
+  grade: number,
   year: number,
   session: string,
   paperNumber: number,
   language: string,
-  totalMarks?: number,
-  durationMinutes?: number
 ): Promise<number> {
+  const specKey = `${subject}|${grade}|${paperNumber}`;
+  const spec = PAPER_SPECS[specKey];
+
   const existing = await db.execute<{ id: number }>(sql`
     SELECT id FROM nsc_papers
-    WHERE subject_id = ${subjectId}
-      AND year = ${year}
-      AND session = ${session}::exam_session
-      AND paper_number = ${paperNumber}
-      AND language = ${language}
+    WHERE subject_id    = ${subjectId}
+      AND year          = ${year}
+      AND session       = ${session}::exam_session
+      AND paper_number  = ${paperNumber}
+      AND language      = ${language}
   `);
 
   if (existing.rows[0]) {
-    if (totalMarks !== undefined || durationMinutes !== undefined) {
+    // Backfill marks/duration if we now know them and they're missing
+    if (spec) {
       await db.execute(sql`
         UPDATE nsc_papers
         SET
-          total_marks = COALESCE(${totalMarks}, total_marks),
-          duration_minutes = COALESCE(${durationMinutes}, duration_minutes),
-          updated_at = now()
+          total_marks      = COALESCE(total_marks,      ${spec.totalMarks}),
+          duration_minutes = COALESCE(duration_minutes, ${spec.durationMinutes}),
+          updated_at       = now()
         WHERE id = ${existing.rows[0].id}
       `);
     }
@@ -572,28 +485,16 @@ async function ensureNscPaper(
 
   const inserted = await db.execute<{ id: number }>(sql`
     INSERT INTO nsc_papers (
-      subject_id,
-      grade_id,
-      year,
-      session,
-      paper_number,
-      language,
-      total_marks,
-      duration_minutes
+      subject_id, grade_id, year, session, paper_number, language,
+      total_marks, duration_minutes
     )
     VALUES (
-      ${subjectId},
-      ${gradeId},
-      ${year},
-      ${session}::exam_session,
-      ${paperNumber},
-      ${language},
-      ${totalMarks ?? null},
-      ${durationMinutes ?? null}
+      ${subjectId}, ${gradeId}, ${year}, ${session}::exam_session,
+      ${paperNumber}, ${language},
+      ${spec?.totalMarks ?? null}, ${spec?.durationMinutes ?? null}
     )
     RETURNING id
   `);
-
   return inserted.rows[0].id;
 }
 
@@ -603,40 +504,29 @@ async function ensureNscPaperDocument(
   title: string,
   fileUrl: string,
   filePath: string,
-  language: string
+  language: string,
 ): Promise<void> {
-  // Check if document already exists
   const existing = await db.execute<{ id: number }>(sql`
     SELECT id FROM nsc_paper_documents
     WHERE nsc_paper_id = ${nscPaperId} AND file_path = ${filePath}
   `);
+  if (existing.rows[0]) return;
 
-  if (existing.rows[0]) {
-    return; // Already exists
-  }
-
-  // Get file size
   let fileSize: number | null = null;
-  try {
-    const stats = fs.statSync(filePath);
-    fileSize = stats.size;
-  } catch {
-    // Ignore if file not accessible
-  }
+  try { fileSize = fs.statSync(filePath).size; } catch { /* inaccessible */ }
 
-  // Determine mime type
   const ext = path.extname(filePath).toLowerCase();
-  const mimeTypes: Record<string, string> = {
-    ".pdf": "application/pdf",
-    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ".doc": "application/msword",
-    ".zip": "application/zip",
-    ".exe": "application/x-msdownload",
+  const MIME_TYPES: Record<string, string> = {
+    ".pdf":  "application/pdf",
+    ".docx": "application/msword",   // full OOXML type is 71 chars, exceeds varchar(60)
+    ".doc":  "application/msword",
+    ".zip":  "application/zip",
+    ".exe":  "application/x-msdownload",
   };
-  const mimeType = mimeTypes[ext] || "application/octet-stream";
 
   await db.execute(sql`
-    INSERT INTO nsc_paper_documents (nsc_paper_id, doc_type, title, file_url, file_path, file_size, mime_type, language)
+    INSERT INTO nsc_paper_documents
+      (nsc_paper_id, doc_type, title, file_url, file_path, file_size, mime_type, language)
     VALUES (
       ${nscPaperId},
       ${docType}::paper_doc_type,
@@ -644,7 +534,7 @@ async function ensureNscPaperDocument(
       ${fileUrl},
       ${filePath},
       ${fileSize},
-      ${mimeType},
+      ${MIME_TYPES[ext] ?? "application/octet-stream"},
       ${language}
     )
   `);
@@ -655,229 +545,172 @@ async function ensureNscPaperQuestion(
   question: SampleQuestion,
 ): Promise<void> {
   const existing = await db.execute<{ id: number }>(sql`
-    SELECT id
-    FROM nsc_paper_questions
-    WHERE nsc_paper_id = ${nscPaperId}
-      AND question_number = ${question.questionNumber}
+    SELECT id FROM nsc_paper_questions
+    WHERE nsc_paper_id = ${nscPaperId} AND question_number = ${question.questionNumber}
   `);
 
   if (existing.rows[0]) {
     await db.execute(sql`
       UPDATE nsc_paper_questions
-      SET
-        question_text = ${question.questionText},
-        marks = ${question.marks},
-        section_label = ${question.sectionLabel ?? null},
-        memo_text = ${question.memoText ?? null}
+      SET question_text = ${question.questionText},
+          marks         = ${question.marks},
+          section_label = ${question.sectionLabel ?? null},
+          memo_text     = ${question.memoText ?? null}
       WHERE id = ${existing.rows[0].id}
     `);
     return;
   }
 
   await db.execute(sql`
-    INSERT INTO nsc_paper_questions (
-      nsc_paper_id,
-      question_number,
-      question_text,
-      marks,
-      section_label,
-      memo_text
-    )
+    INSERT INTO nsc_paper_questions
+      (nsc_paper_id, question_number, question_text, marks, section_label, memo_text)
     VALUES (
-      ${nscPaperId},
-      ${question.questionNumber},
-      ${question.questionText},
-      ${question.marks},
-      ${question.sectionLabel ?? null},
-      ${question.memoText ?? null}
+      ${nscPaperId}, ${question.questionNumber}, ${question.questionText},
+      ${question.marks}, ${question.sectionLabel ?? null}, ${question.memoText ?? null}
     )
   `);
 }
 
+// ─── Seeding modes ────────────────────────────────────────────────────────────
+
 async function seedSamplePapers(curriculumId: number) {
-  console.log("Using built-in NSC sample papers dataset.");
+  console.log("  Using built-in NSC sample dataset.");
 
   const gradeCache = new Map<number, number>();
-  const subjectSet = new Set<string>();
-  let papersCount = 0;
-  let documentsCount = 0;
-  let questionsCount = 0;
+  let papersCount = 0, documentsCount = 0, questionsCount = 0;
 
-  for (const samplePaper of SAMPLE_PAPERS) {
-    subjectSet.add(samplePaper.subject);
-    const subjectId = await ensureSubject(samplePaper.subject);
+  for (const paper of SAMPLE_PAPERS) {
+    const subjectId = await ensureSubject(paper.subject);
 
-    let gradeId: number | null = null;
-    if (gradeCache.has(samplePaper.grade)) {
-      gradeId = gradeCache.get(samplePaper.grade)!;
-    } else {
-      gradeId = await ensureGrade(curriculumId, samplePaper.grade);
-      gradeCache.set(samplePaper.grade, gradeId);
+    if (!gradeCache.has(paper.grade)) {
+      gradeCache.set(paper.grade, await ensureGrade(curriculumId, paper.grade));
     }
+    const gradeId = gradeCache.get(paper.grade)!;
 
     const nscPaperId = await ensureNscPaper(
-      subjectId,
-      gradeId,
-      samplePaper.year,
-      samplePaper.session,
-      samplePaper.paperNumber,
-      samplePaper.language,
-      samplePaper.totalMarks,
-      samplePaper.durationMinutes,
+      subjectId, gradeId, paper.subject, paper.grade,
+      paper.year, paper.session, paper.paperNumber, paper.language,
     );
     papersCount++;
 
-    for (const document of samplePaper.documents) {
+    for (const doc of paper.documents) {
       await ensureNscPaperDocument(
-        nscPaperId,
-        document.docType,
-        document.title,
-        document.fileUrl,
-        document.filePath,
-        document.language ?? samplePaper.language,
+        nscPaperId, doc.docType, doc.title,
+        doc.fileUrl, doc.filePath, doc.language ?? paper.language,
       );
       documentsCount++;
     }
 
-    for (const question of samplePaper.questions) {
-      await ensureNscPaperQuestion(nscPaperId, question);
+    for (const q of paper.questions) {
+      await ensureNscPaperQuestion(nscPaperId, q);
       questionsCount++;
     }
   }
 
-  console.log("\n=== Sample Seeding Complete ===");
-  console.log(`Subjects processed: ${subjectSet.size}`);
-  console.log(`Papers created/updated: ${papersCount}`);
-  console.log(`Documents created/updated: ${documentsCount}`);
-  console.log(`Questions created/updated: ${questionsCount}`);
+  console.log(`\n  ✓ ${papersCount} papers, ${documentsCount} documents, ${questionsCount} questions`);
 }
 
-// ============ MAIN SEEDING FUNCTION ============
-
-async function seedNscPapers() {
-  console.log("Starting NSC Papers seeding...\n");
-  console.log(`Education folder: ${EDUCATION_FOLDER}`);
-
-  // Ensure CAPS curriculum exists
-  const curriculumId = await ensureCurriculum();
-  console.log(`CAPS Curriculum ID: ${curriculumId}`);
-
-  if (!fs.existsSync(EDUCATION_FOLDER)) {
-    console.log("Education folder not found, seeding built-in sample papers instead.");
-    await seedSamplePapers(curriculumId);
-    return;
-  }
-
-  // Get all subject folders
-  const subjectFolders = fs.readdirSync(EDUCATION_FOLDER, { withFileTypes: true })
+async function seedFromEducationFolder(curriculumId: number) {
+  const subjectFolders = fs
+    .readdirSync(EDUCATION_FOLDER, { withFileTypes: true })
     .filter(d => d.isDirectory())
     .map(d => d.name);
 
   if (subjectFolders.length === 0) {
-    console.log("No subject folders found in Education, seeding built-in sample papers instead.");
-    await seedSamplePapers(curriculumId);
-    return;
+    console.log("  No subject folders found — falling back to sample data.");
+    return seedSamplePapers(curriculumId);
   }
 
-  console.log(`Found subjects: ${subjectFolders.join(", ")}\n`);
+  console.log(`  Subjects found: ${subjectFolders.join(", ")}\n`);
 
-  const stats = {
-    subjectsProcessed: 0,
-    papersCreated: 0,
-    documentsCreated: 0,
-    filesSkipped: 0,
-  };
-
-  // Maps to track created records
   const gradeCache = new Map<number, number>();
+  const stats = { papers: 0, documents: 0, skipped: 0 };
 
   for (const subjectName of subjectFolders) {
-    console.log(`\n=== Processing Subject: ${subjectName} ===`);
+    console.log(`── ${subjectName}`);
 
     const subjectId = await ensureSubject(subjectName);
-    console.log(`Subject ID: ${subjectId}`);
-    stats.subjectsProcessed++;
-
     const subjectPath = path.join(EDUCATION_FOLDER, subjectName);
     const files = walkDirectory(subjectPath, subjectName);
 
-    console.log(`Found ${files.length} valid document files`);
+    console.log(`   ${files.length} document files discovered`);
 
-    // Group files by paper (subject + year + session + paper number + language)
+    // Group files by canonical paper key
     const paperGroups = new Map<string, ParsedFile[]>();
-
     for (const file of files) {
-      const key = `${file.subject}|${file.year}|${file.session}|${file.paperNumber}|${file.language}`;
-      if (!paperGroups.has(key)) {
-        paperGroups.set(key, []);
-      }
+      const key = `${file.year}|${file.session}|${file.paperNumber}|${file.language}|${file.grade}`;
+      if (!paperGroups.has(key)) paperGroups.set(key, []);
       paperGroups.get(key)!.push(file);
     }
 
-    console.log(`Grouped into ${paperGroups.size} unique papers`);
+    console.log(`   ${paperGroups.size} unique papers\n`);
 
-    // Process each paper group
-    for (const [key, paperFiles] of paperGroups) {
+    for (const [, paperFiles] of paperGroups) {
       const sample = paperFiles[0];
 
-      // Ensure grade exists
-      let gradeId: number | null = null;
-      if (sample.grade) {
-        if (gradeCache.has(sample.grade)) {
-          gradeId = gradeCache.get(sample.grade)!;
-        } else {
-          gradeId = await ensureGrade(curriculumId, sample.grade);
-          gradeCache.set(sample.grade, gradeId);
-        }
+      if (!gradeCache.has(sample.grade)) {
+        gradeCache.set(sample.grade, await ensureGrade(curriculumId, sample.grade));
       }
+      const gradeId = gradeCache.get(sample.grade)!;
 
-      // Create or get NSC paper record
       const nscPaperId = await ensureNscPaper(
-        subjectId,
-        gradeId,
-        sample.year,
-        sample.session,
-        sample.paperNumber,
-        sample.language
+        subjectId, gradeId, sample.subject, sample.grade,
+        sample.year, sample.session, sample.paperNumber, sample.language,
       );
+      stats.papers++;
 
-      stats.papersCreated++;
+      const educationNorm = normalizePath(EDUCATION_FOLDER);
 
-      // Add all documents for this paper
       for (const file of paperFiles) {
-        // Store the path relative to Education folder, preserving the nested hierarchy
-        const normalizedEducation = EDUCATION_FOLDER.replace(/\\/g, "/");
+        // Store URL as path relative to the Education folder, URL-encoded per segment
         const relativeUrl = file.filePath
-          .replace(normalizedEducation, "")
+          .replace(educationNorm, "")
           .split("/")
           .filter(Boolean)
-          .map(segment => encodeURIComponent(segment))
+          .map(s => encodeURIComponent(s))
           .join("/");
 
-        await ensureNscPaperDocument(
-          nscPaperId,
-          file.docType,
-          file.fileName,
-          relativeUrl,
-          file.filePath,
-          file.language
-        );
+        const title = buildTitle(file);
 
-        stats.documentsCreated++;
-        console.log(`  + ${file.docType}: ${file.fileName}`);
+        await ensureNscPaperDocument(
+          nscPaperId, file.docType, title,
+          relativeUrl, file.filePath, file.language,
+        );
+        stats.documents++;
+
+        const indicator = file.docType === "question_paper" ? "📄"
+          : file.docType === "memorandum"                   ? "✅"
+          : file.docType === "marking_guideline"            ? "🎯"
+          : file.docType === "data_files"                   ? "📦"
+          : "📎";
+        console.log(`   ${indicator} [${file.year} ${file.session} P${file.paperNumber}] ${file.docType}: ${file.fileName}`);
       }
     }
   }
 
-  console.log("\n=== Seeding Complete ===");
-  console.log(`Subjects processed: ${stats.subjectsProcessed}`);
-  console.log(`Papers created/updated: ${stats.papersCreated}`);
-  console.log(`Documents created: ${stats.documentsCreated}`);
+  console.log(`\n=== Done ===`);
+  console.log(`Papers created/updated : ${stats.papers}`);
+  console.log(`Documents registered   : ${stats.documents}`);
 }
 
-// ============ RUN ============
+// ─── Entry point ─────────────────────────────────────────────────────────────
 
-seedNscPapers().catch((error) => {
-  console.error("Seeding failed:", error);
+async function main() {
+  console.log("NSC Papers Seeding\n");
+  console.log(`Education folder: ${EDUCATION_FOLDER}\n`);
+
+  const curriculumId = await ensureCurriculum();
+  console.log(`CAPS curriculum id: ${curriculumId}\n`);
+
+  if (!fs.existsSync(EDUCATION_FOLDER)) {
+    console.log("Education folder not found — seeding built-in sample papers.\n");
+    await seedSamplePapers(curriculumId);
+  } else {
+    await seedFromEducationFolder(curriculumId);
+  }
+}
+
+main().catch(err => {
+  console.error("Seeding failed:", err);
   process.exit(1);
 });
