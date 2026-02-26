@@ -59,4 +59,7 @@ checklistsRoutes.get("/", requireAuth, list);
  */
 checklistsRoutes.post("/progress", requireAuth, update);
 
+// Legacy compatibility alias used by existing frontend widgets.
+checklistsRoutes.post("/", requireAuth, update);
+
 export { checklistsRoutes };

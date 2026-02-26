@@ -276,26 +276,77 @@ export const nscPaperListQuerySchema = z.object({
   offset: z.coerce.number().int().nonnegative().optional(),
 });
 
+const coerceRequiredPositiveInt = () =>
+  z.preprocess((value) => {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return value;
+      const parsed = Number(trimmed);
+      return Number.isFinite(parsed) ? parsed : value;
+    }
+    return value;
+  }, z.number().int().positive());
+
+const coerceOptionalPositiveInt = () =>
+  z.preprocess((value) => {
+    if (value === undefined || value === null || value === "") return undefined;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return undefined;
+      const parsed = Number(trimmed);
+      return Number.isFinite(parsed) ? parsed : value;
+    }
+    return value;
+  }, z.number().int().positive().optional());
+
+const coerceOptionalBoolean = () =>
+  z.preprocess((value) => {
+    if (value === undefined || value === null || value === "") return undefined;
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (["true", "1", "yes", "on"].includes(normalized)) return true;
+      if (["false", "0", "no", "off"].includes(normalized)) return false;
+    }
+    return value;
+  }, z.boolean().optional());
+
 export const nscPaperCreateSchema = z.object({
-  subjectId: z.number().int().positive(),
-  gradeId: z.number().int().positive().optional(),
-  year: z.number().int().min(2000).max(2100),
+  subjectId: coerceRequiredPositiveInt(),
+  gradeId: coerceOptionalPositiveInt(),
+  year: z.preprocess((value) => {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return value;
+      const parsed = Number(trimmed);
+      return Number.isFinite(parsed) ? parsed : value;
+    }
+    return value;
+  }, z.number().int().min(2000).max(2100)),
   session: z.enum(["november", "may_june", "february_march", "supplementary", "exemplar"]),
-  paperNumber: z.number().int().positive().default(1),
+  paperNumber: coerceRequiredPositiveInt().default(1),
   language: z.string().optional(),
-  totalMarks: z.number().int().positive().optional(),
-  durationMinutes: z.number().int().positive().optional(),
+  totalMarks: coerceOptionalPositiveInt(),
+  durationMinutes: coerceOptionalPositiveInt(),
   title: z.string().max(200).optional(),
   instructions: z.string().optional(),
-  strictMode: z.boolean().optional(),
-  isProcessed: z.boolean().optional(),
+  strictMode: coerceOptionalBoolean(),
+  isProcessed: coerceOptionalBoolean(),
   sections: z
     .array(
       z.object({
         label: z.string().min(1).max(10),
         title: z.string().max(100).optional(),
         instructions: z.string().optional(),
-        totalMarks: z.number().int().nonnegative().optional(),
+        totalMarks: z.preprocess((value) => {
+          if (value === undefined || value === null || value === "") return undefined;
+          if (typeof value === "string") {
+            const trimmed = value.trim();
+            if (!trimmed) return undefined;
+            const parsed = Number(trimmed);
+            return Number.isFinite(parsed) ? parsed : value;
+          }
+          return value;
+        }, z.number().int().nonnegative().optional()),
       }),
     )
     .optional(),

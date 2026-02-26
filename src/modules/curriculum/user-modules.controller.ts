@@ -14,6 +14,7 @@ export const listUserModules = asyncHandler(async (req: Request, res: Response) 
   const selections = await db
     .select({
       moduleId: modules.id,
+      subjectId: modules.subjectId,
       title: modules.title,
       grade: modules.grade,
       order: modules.order,

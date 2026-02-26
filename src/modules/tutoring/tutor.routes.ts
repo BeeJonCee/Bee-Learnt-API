@@ -178,6 +178,7 @@ router.post("/sessions", requireAuth, onlyAdminOrTutor, createSession);
  *         description: Session updated
  */
 router.put("/sessions/:sessionId", requireAuth, onlyAdminOrTutor, updateSession);
+router.patch("/sessions/:sessionId", requireAuth, onlyAdminOrTutor, updateSession);
 
 // ============ FEEDBACK ROUTES ============
 

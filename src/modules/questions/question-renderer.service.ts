@@ -40,19 +40,17 @@ export class QuestionRendererService {
       timeLimitSeconds: showTimeLimit ? question.timeLimitSeconds : undefined,
     };
 
-    // Handle options-based questions
-    if (question.options && question.options.length > 0) {
-      let opts = [...question.options];
+    // Keep all option payload shapes (array/map/object) but always strip correctness flags.
+    const optionPayload = question.options as unknown;
+    if (optionPayload !== null && optionPayload !== undefined) {
+      const sanitizedOptions = this.stripCorrectFlags(optionPayload);
 
-      // Remove isCorrect flag for security
-      opts = opts.map(({ isCorrect, ...opt }) => opt);
-
-      // Shuffle if requested
-      if (shuffleOptions) {
-        opts = this.shuffleArray(opts);
+      if (Array.isArray(sanitizedOptions)) {
+        const opts = sanitizedOptions as QuestionOption[];
+        rendered.options = shuffleOptions ? this.shuffleArray(opts) : opts;
+      } else {
+        rendered.options = sanitizedOptions as any;
       }
-
-      rendered.options = opts;
     }
 
     // For matching questions, provide separate lists
@@ -98,7 +96,10 @@ export class QuestionRendererService {
     };
 
     // Highlight correct/incorrect options for multiple choice
-    if (question.type === "multiple_choice" || question.type === "multi_select") {
+    if (
+      (question.type === "multiple_choice" || question.type === "multi_select") &&
+      Array.isArray(question.options)
+    ) {
       rendered.options = question.options?.map((opt) => ({
         ...opt,
         isCorrect: this.isOptionCorrect(opt.id, question.correctAnswer),
@@ -201,6 +202,25 @@ export class QuestionRendererService {
   // ══════════════════════════════════════════════════════════
   // HELPER METHODS
   // ══════════════════════════════════════════════════════════
+
+  private stripCorrectFlags(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((entry) => this.stripCorrectFlags(entry));
+    }
+
+    if (value && typeof value === "object") {
+      const cleaned: Record<string, unknown> = {};
+      for (const [key, nestedValue] of Object.entries(
+        value as Record<string, unknown>
+      )) {
+        if (key === "isCorrect") continue;
+        cleaned[key] = this.stripCorrectFlags(nestedValue);
+      }
+      return cleaned;
+    }
+
+    return value;
+  }
 
   private shuffleArray<T>(array: T[]): T[] {
     const shuffled = [...array];

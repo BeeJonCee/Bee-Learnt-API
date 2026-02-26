@@ -200,6 +200,15 @@ questionBankRoutes.put(
   update
 );
 
+// Legacy compatibility alias used by existing frontend edit flow.
+questionBankRoutes.patch(
+  "/:id",
+  requireAuth,
+  requireRole(["ADMIN", "TUTOR"]),
+  validateBody(questionBankUpdateSchema),
+  update
+);
+
 /**
  * @swagger
  * /api/question-bank/{id}/review:
