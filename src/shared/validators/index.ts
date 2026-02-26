@@ -534,13 +534,27 @@ export const quizGenerateSchema = z.object({
   timeLimit: z.number().int().positive().optional(),
 });
 
-export const quizSubmitSchema = z.object({
-  answers: z.array(
+const quizSubmitAnswerSchema = z
+  .union([
     z.object({
       questionId: z.number().int().positive(),
-      selectedOption: z.string().or(z.number()).or(z.boolean()),
-    })
-  ),
+      answer: z.unknown().refine((value) => value !== undefined, {
+        message: "answer is required",
+      }),
+    }),
+    z.object({
+      questionId: z.number().int().positive(),
+      selectedOption: z.union([z.string(), z.number(), z.boolean()]),
+    }),
+  ])
+  .transform((entry) => ({
+    questionId: entry.questionId,
+    answer: "answer" in entry ? entry.answer : entry.selectedOption,
+  }));
+
+export const quizSubmitSchema = z.object({
+  quizId: z.coerce.number().int().positive(),
+  answers: z.array(quizSubmitAnswerSchema).min(1),
 });
 
 export const quizQuerySchema = z.object({
