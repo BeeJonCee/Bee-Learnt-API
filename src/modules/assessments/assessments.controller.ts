@@ -9,6 +9,8 @@ import {
   startAssessmentAttempt,
   createPaper,
   getPaper as getAssessmentWorkflowDetail,
+  updatePaper,
+  deletePaper,
   publishPaper,
   closePaper,
   startMarkingPaper,
