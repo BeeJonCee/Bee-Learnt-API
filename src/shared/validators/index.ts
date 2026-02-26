@@ -546,10 +546,20 @@ const quizSubmitAnswerSchema = z
       questionId: z.number().int().positive(),
       selectedOption: z.union([z.string(), z.number(), z.boolean()]),
     }),
+    // Backward compatibility for typo seen in older clients.
+    z.object({
+      questionId: z.number().int().positive(),
+      selesctedOption: z.union([z.string(), z.number(), z.boolean()]),
+    }),
   ])
   .transform((entry) => ({
     questionId: entry.questionId,
-    answer: "answer" in entry ? entry.answer : entry.selectedOption,
+    answer:
+      "answer" in entry
+        ? entry.answer
+        : "selectedOption" in entry
+          ? entry.selectedOption
+          : entry.selesctedOption,
   }));
 
 export const quizSubmitSchema = z.object({
