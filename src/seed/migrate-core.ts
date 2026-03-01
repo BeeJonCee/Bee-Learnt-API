@@ -112,6 +112,23 @@ export async function migrate() {
     );
   `);
 
+  // Backfill newer auth/profile columns on existing databases.
+  await db.execute(sql`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS phone varchar(30),
+      ADD COLUMN IF NOT EXISTS email_verified_at timestamptz,
+      ADD COLUMN IF NOT EXISTS phone_verified_at timestamptz,
+      ADD COLUMN IF NOT EXISTS login_email_alert_enabled boolean NOT NULL DEFAULT true,
+      ADD COLUMN IF NOT EXISTS login_sms_alert_enabled boolean NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS last_login_at timestamptz;
+  `);
+
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique_idx
+    ON users(phone)
+    WHERE phone IS NOT NULL;
+  `);
+
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS email_verification_codes (
       id serial PRIMARY KEY,

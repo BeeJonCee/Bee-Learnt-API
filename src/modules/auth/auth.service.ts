@@ -12,7 +12,7 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
-import { and, eq, gt, isNull, or } from "drizzle-orm";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db } from "../../core/database/index.js";
 import { roles, users, passwordResetTokens } from "../../core/database/schema/index.js";
@@ -94,10 +94,80 @@ function normalizeRole(role: string): BeeLearntRole {
 }
 
 const NEON_AUTH_OPTIONAL_MISSING_CODES = new Set(["42P01", "3F000"]);
+const OPTIONAL_USERS_COLUMN_MISSING_CODE = "42703";
 
 function isNeonOptionalSyncError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
   return !!code && NEON_AUTH_OPTIONAL_MISSING_CODES.has(code);
+}
+
+function isOptionalUsersColumnError(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code;
+  return code === OPTIONAL_USERS_COLUMN_MISSING_CODE;
+}
+
+type OptionalLoginUserFields = {
+  phone: string | null;
+  emailVerifiedAt: Date | null;
+  lastLoginAt: Date | null;
+  loginEmailAlertEnabled: boolean;
+  loginSmsAlertEnabled: boolean;
+};
+
+const DEFAULT_OPTIONAL_LOGIN_FIELDS: OptionalLoginUserFields = {
+  phone: null,
+  emailVerifiedAt: new Date(),
+  lastLoginAt: null,
+  loginEmailAlertEnabled: true,
+  loginSmsAlertEnabled: false,
+};
+
+async function getOptionalLoginUserFields(userId: string): Promise<OptionalLoginUserFields> {
+  try {
+    const [row] = await db
+      .select({
+        phone: users.phone,
+        emailVerifiedAt: users.emailVerifiedAt,
+        lastLoginAt: users.lastLoginAt,
+        loginEmailAlertEnabled: users.loginEmailAlertEnabled,
+        loginSmsAlertEnabled: users.loginSmsAlertEnabled,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!row) {
+      return DEFAULT_OPTIONAL_LOGIN_FIELDS;
+    }
+
+    return {
+      phone: row.phone ?? null,
+      emailVerifiedAt: row.emailVerifiedAt ?? DEFAULT_OPTIONAL_LOGIN_FIELDS.emailVerifiedAt,
+      lastLoginAt: row.lastLoginAt ?? null,
+      loginEmailAlertEnabled:
+        row.loginEmailAlertEnabled ?? DEFAULT_OPTIONAL_LOGIN_FIELDS.loginEmailAlertEnabled,
+      loginSmsAlertEnabled:
+        row.loginSmsAlertEnabled ?? DEFAULT_OPTIONAL_LOGIN_FIELDS.loginSmsAlertEnabled,
+    };
+  } catch (error) {
+    if (isOptionalUsersColumnError(error)) {
+      return DEFAULT_OPTIONAL_LOGIN_FIELDS;
+    }
+    throw error;
+  }
+}
+
+async function touchLastLogin(userId: string): Promise<void> {
+  try {
+    await db
+      .update(users)
+      .set({ lastLoginAt: new Date() })
+      .where(eq(users.id, userId));
+  } catch (error) {
+    if (!isOptionalUsersColumnError(error)) {
+      throw error;
+    }
+  }
 }
 
 export async function registerUser(input: RegisterInput): Promise<RegisterUserResult> {
@@ -244,28 +314,50 @@ export async function loginUser(input: LoginInput): Promise<LoginUserResult> {
   }
 
   const identifier = input.email.trim().toLowerCase();
-  const [localUser] = await db
+  const [localUserByEmail] = await db
     .select({
       id: users.id,
       name: users.name,
       email: users.email,
-      phone: users.phone,
       passwordHash: users.passwordHash,
       role: roles.name,
-      emailVerifiedAt: users.emailVerifiedAt,
-      lastLoginAt: users.lastLoginAt,
-      loginEmailAlertEnabled: users.loginEmailAlertEnabled,
-      loginSmsAlertEnabled: users.loginSmsAlertEnabled,
     })
     .from(users)
     .innerJoin(roles, eq(users.roleId, roles.id))
-    .where(or(eq(users.email, identifier), eq(users.phone, identifier)));
+    .where(eq(users.email, identifier))
+    .limit(1);
+
+  let localUser = localUserByEmail;
+  if (!localUser) {
+    try {
+      const [localUserByPhone] = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          passwordHash: users.passwordHash,
+          role: roles.name,
+        })
+        .from(users)
+        .innerJoin(roles, eq(users.roleId, roles.id))
+        .where(eq(users.phone, identifier))
+        .limit(1);
+
+      localUser = localUserByPhone;
+    } catch (error) {
+      if (!isOptionalUsersColumnError(error)) {
+        throw error;
+      }
+    }
+  }
 
   const makeVerificationChannels = (phone: string | null): VerificationChannel[] => {
     return phone ? ["email", "sms"] : ["email"];
   };
 
   if (localUser?.passwordHash) {
+    const optionalFields = await getOptionalLoginUserFields(localUser.id);
+
     const valid = await bcrypt.compare(input.password, localUser.passwordHash);
     if (!valid) {
       console.warn(`${AUTH_SERVICE_LOG_NS} login:local-password-mismatch`, {
@@ -281,18 +373,18 @@ export async function loginUser(input: LoginInput): Promise<LoginUserResult> {
       name: localUser.name,
       email: localUser.email,
       role: normalizedRole,
-      phone: localUser.phone ?? null,
+      phone: optionalFields.phone,
     };
 
     const requiresEmailVerification =
-      !localUser.emailVerifiedAt &&
-      (env.authEnforceEmailVerification || !localUser.lastLoginAt);
+      !optionalFields.emailVerifiedAt &&
+      (env.authEnforceEmailVerification || !optionalFields.lastLoginAt);
 
     if (requiresEmailVerification) {
       return {
         requiresVerification: true,
         user: userBase,
-        channels: makeVerificationChannels(localUser.phone ?? null),
+        channels: makeVerificationChannels(optionalFields.phone),
       };
     }
 
@@ -307,10 +399,7 @@ export async function loginUser(input: LoginInput): Promise<LoginUserResult> {
       { expiresIn: "7d" },
     );
 
-    await db
-      .update(users)
-      .set({ lastLoginAt: new Date() })
-      .where(eq(users.id, localUser.id));
+    await touchLastLogin(localUser.id);
 
     console.info(`${AUTH_SERVICE_LOG_NS} login:local-success`, {
       email: maskedEmail,
@@ -323,8 +412,8 @@ export async function loginUser(input: LoginInput): Promise<LoginUserResult> {
       token,
       user: userBase,
       alertPreferences: {
-        loginEmailAlertEnabled: localUser.loginEmailAlertEnabled,
-        loginSmsAlertEnabled: localUser.loginSmsAlertEnabled,
+        loginEmailAlertEnabled: optionalFields.loginEmailAlertEnabled,
+        loginSmsAlertEnabled: optionalFields.loginSmsAlertEnabled,
       },
     };
   }
@@ -336,22 +425,11 @@ export async function loginUser(input: LoginInput): Promise<LoginUserResult> {
 
     const neonResult = await authenticateViaNeonAuth(input.email, input.password);
     if (neonResult) {
-      const [syncedUser] = await db
-        .select({
-          id: users.id,
-          phone: users.phone,
-          emailVerifiedAt: users.emailVerifiedAt,
-          lastLoginAt: users.lastLoginAt,
-          loginEmailAlertEnabled: users.loginEmailAlertEnabled,
-          loginSmsAlertEnabled: users.loginSmsAlertEnabled,
-        })
-        .from(users)
-        .where(eq(users.id, neonResult.id))
-        .limit(1);
+      const syncedUser = await getOptionalLoginUserFields(neonResult.id);
 
       const requiresEmailVerification =
-        !syncedUser?.emailVerifiedAt &&
-        (env.authEnforceEmailVerification || !syncedUser?.lastLoginAt);
+        !syncedUser.emailVerifiedAt &&
+        (env.authEnforceEmailVerification || !syncedUser.lastLoginAt);
 
       if (requiresEmailVerification) {
         return {
@@ -361,9 +439,9 @@ export async function loginUser(input: LoginInput): Promise<LoginUserResult> {
             name: neonResult.name,
             email: neonResult.email,
             role: neonResult.role,
-            phone: syncedUser?.phone ?? null,
+            phone: syncedUser.phone,
           },
-          channels: makeVerificationChannels(syncedUser?.phone ?? null),
+          channels: makeVerificationChannels(syncedUser.phone),
         };
       }
 
@@ -378,10 +456,7 @@ export async function loginUser(input: LoginInput): Promise<LoginUserResult> {
         { expiresIn: "7d" },
       );
 
-      await db
-        .update(users)
-        .set({ lastLoginAt: new Date() })
-        .where(eq(users.id, neonResult.id));
+      await touchLastLogin(neonResult.id);
 
       console.info(`${AUTH_SERVICE_LOG_NS} login:neon-fallback:success`, {
         email: maskedEmail,
@@ -397,11 +472,11 @@ export async function loginUser(input: LoginInput): Promise<LoginUserResult> {
           name: neonResult.name,
           email: neonResult.email,
           role: neonResult.role,
-          phone: syncedUser?.phone ?? null,
+          phone: syncedUser.phone,
         },
         alertPreferences: {
-          loginEmailAlertEnabled: syncedUser?.loginEmailAlertEnabled ?? true,
-          loginSmsAlertEnabled: syncedUser?.loginSmsAlertEnabled ?? false,
+          loginEmailAlertEnabled: syncedUser.loginEmailAlertEnabled,
+          loginSmsAlertEnabled: syncedUser.loginSmsAlertEnabled,
         },
       };
     }
