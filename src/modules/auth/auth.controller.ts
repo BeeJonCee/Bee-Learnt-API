@@ -6,6 +6,13 @@ import { db } from "../../core/database/index.js";
 import { users } from "../../core/database/schema/users.schema.js";
 import { asyncHandler } from "../../core/middleware/async-handler.js";
 import { loginUser, registerUser, forgotPassword, resetPassword } from "./auth.service.js";
+import { sendLoginAlerts } from "./auth-notifications.service.js";
+import {
+  normalizeVerificationTarget,
+  sendVerificationCode,
+  type VerificationChannel,
+  verifyVerificationCode,
+} from "./auth-verification.service.js";
 import {
   sendTwoFactorChallenge,
   verifyTwoFactorCode,
@@ -18,6 +25,7 @@ import {
 import { isDatabaseAuthError } from "../../shared/utils/db-errors.js";
 import { verifyNeonToken } from "../../shared/utils/neon-auth.js";
 import type { BeeLearntRole } from "../../shared/types/auth.js";
+import { logAudit } from "../../shared/audit/audit-log.js";
 
 const AUTH_API_LOG_NS = "[auth-api]";
 
@@ -47,6 +55,18 @@ const getRequestMeta = (req: Request) => ({
   path: req.originalUrl,
   ip: req.ip,
 });
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const extractClientIp = (req: Request): string | null => {
+  const forwardedFor = extractString(req.header("x-forwarded-for"));
+  if (forwardedFor) {
+    const [firstIp] = forwardedFor.split(",");
+    return firstIp?.trim() ?? null;
+  }
+
+  return req.ip ?? null;
+};
 
 const SELF_SIGNUP_ROLES: BeeLearntRole[] = ["STUDENT", "PARENT"];
 
@@ -129,60 +149,89 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   const requestMeta = getRequestMeta(req);
   res.setHeader("x-auth-trace-id", traceId);
 
-  const body = req.body as { email?: unknown; twoFactorCode?: unknown };
+  const body = req.body as { email?: unknown };
   const email = extractString(body.email);
-  const twoFactorCode = extractString(body.twoFactorCode);
+
   console.info(`${AUTH_API_LOG_NS} register:start`, {
     traceId,
     email: maskEmail(email),
     ...requestMeta,
   });
 
-  if (!email) {
-    res.status(400).json({ message: "Email is required" });
-    return;
-  }
-
-  if (!twoFactorCode) {
-    const challenge = await sendTwoFactorChallenge({
-      email,
-      purpose: "register",
-    });
-    console.info(`${AUTH_API_LOG_NS} register:two-factor:challenge-sent`, {
-      traceId,
-      email: maskEmail(email),
-      ...requestMeta,
-    });
-    res.status(202).json(challenge);
-    return;
-  }
-
-  const verification = await verifyTwoFactorCode({
-    email,
-    code: twoFactorCode,
-  });
-
-  if (!verification.valid) {
-    console.warn(`${AUTH_API_LOG_NS} register:two-factor:invalid-code`, {
-      traceId,
-      email: maskEmail(email),
-      ...requestMeta,
-    });
-    res
-      .status(401)
-      .json({ message: "Invalid or expired verification code. Please try again." });
-    return;
-  }
-
   try {
     const result = await registerUser(req.body);
+
+    let emailDelivery = false;
+    let smsDelivery = false;
+    const channels: VerificationChannel[] = ["email"];
+
+    try {
+      await sendVerificationCode({
+        userId: result.id,
+        channel: "email",
+        purpose: "email_verification",
+        target: result.email,
+      });
+      emailDelivery = true;
+    } catch (error) {
+      console.warn(`${AUTH_API_LOG_NS} register:email-verification-send-failed`, {
+        traceId,
+        userId: result.id,
+        message: getErrorMessage(error),
+      });
+    }
+
+    if (result.phone) {
+      channels.push("sms");
+      try {
+        await sendVerificationCode({
+          userId: result.id,
+          channel: "sms",
+          purpose: "phone_verification",
+          target: result.phone,
+        });
+        smsDelivery = true;
+      } catch (error) {
+        console.warn(`${AUTH_API_LOG_NS} register:sms-verification-send-failed`, {
+          traceId,
+          userId: result.id,
+          message: getErrorMessage(error),
+        });
+      }
+    }
+
+    await logAudit({
+      actorId: result.id,
+      action: "auth.register",
+      entity: "user",
+      details: {
+        role: result.role,
+        email: maskEmail(result.email),
+        emailDelivery,
+        smsDelivery,
+      },
+      req,
+    });
+
     console.info(`${AUTH_API_LOG_NS} register:success`, {
       traceId,
       userId: result.id,
       role: result.role,
+      emailDelivery,
+      smsDelivery,
       ...requestMeta,
     });
-    res.status(201).json(result);
+
+    res.status(201).json({
+      userId: result.id,
+      verificationRequired: true,
+      channels,
+      emailDelivery,
+      smsDelivery,
+      message: emailDelivery
+        ? "Verification code sent. Please verify your email to activate your account."
+        : "Account created. Use resend verification to receive your code.",
+    });
   } catch (error) {
     console.error(`${AUTH_API_LOG_NS} register:error`, {
       traceId,
@@ -205,9 +254,9 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   const requestMeta = getRequestMeta(req);
   res.setHeader("x-auth-trace-id", traceId);
 
-  const body = req.body as { email?: unknown; twoFactorCode?: unknown };
+  const body = req.body as { email?: unknown };
   const email = extractString(body.email);
-  const twoFactorCode = extractString(body.twoFactorCode);
+
   console.info(`${AUTH_API_LOG_NS} login:start`, {
     traceId,
     email: maskEmail(email),
@@ -217,38 +266,47 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   try {
     const result = await loginUser(req.body);
 
-    if (!twoFactorCode) {
-      const challenge = await sendTwoFactorChallenge({
-        email: result.user.email,
-        purpose: "login",
+    if (result.requiresVerification) {
+      await logAudit({
+        actorId: result.user.id,
+        action: "login_failed",
+        entity: "user",
+        details: { reason: "email_unverified" },
+        req,
       });
-      console.info(`${AUTH_API_LOG_NS} login:two-factor:challenge-sent`, {
-        traceId,
-        email: maskEmail(result.user.email),
-        userId: result.user.id,
-        ...requestMeta,
+
+      res.status(403).json({
+        message: "Verify your email to continue.",
+        verificationRequired: true,
+        channels: result.channels,
+        target: result.user.email,
+        ...(result.user.phone ? { smsTarget: result.user.phone } : {}),
       });
-      res.status(202).json(challenge);
       return;
     }
 
-    const verification = await verifyTwoFactorCode({
+    const alertsSent = await sendLoginAlerts({
+      userId: result.user.id,
       email: result.user.email,
-      code: twoFactorCode,
+      phone: result.user.phone,
+      loginEmailAlertEnabled: result.alertPreferences.loginEmailAlertEnabled,
+      loginSmsAlertEnabled: result.alertPreferences.loginSmsAlertEnabled,
+      meta: {
+        ipAddress: extractClientIp(req),
+        userAgent: extractString(req.header("user-agent")),
+      },
     });
 
-    if (!verification.valid) {
-      console.warn(`${AUTH_API_LOG_NS} login:two-factor:invalid-code`, {
-        traceId,
-        email: maskEmail(result.user.email),
-        userId: result.user.id,
-        ...requestMeta,
-      });
-      res
-        .status(401)
-        .json({ message: "Invalid or expired verification code. Please try again." });
-      return;
-    }
+    await logAudit({
+      actorId: result.user.id,
+      action: "login_success",
+      entity: "user",
+      details: {
+        role: result.user.role,
+        alertsSent,
+      },
+      req,
+    });
 
     console.info(`${AUTH_API_LOG_NS} login:success`, {
       traceId,
@@ -256,7 +314,17 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
       role: result.user.role,
       ...requestMeta,
     });
-    res.json(result);
+
+    res.json({
+      token: result.token,
+      user: {
+        id: result.user.id,
+        name: result.user.name,
+        email: result.user.email,
+        role: result.user.role,
+      },
+      alertsSent,
+    });
   } catch (error) {
     console.error(`${AUTH_API_LOG_NS} login:error`, {
       traceId,
@@ -274,6 +342,240 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   }
 });
 
+export const sendVerificationCodeHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const traceId = getTraceId(req, "verification-send");
+    const requestMeta = getRequestMeta(req);
+
+    const body = req.body as {
+      channel: VerificationChannel;
+      target: string;
+      purpose?: "email_verification" | "phone_verification";
+    };
+
+    const channel = body.channel;
+    const rawTarget = extractString(body.target);
+
+    if (!rawTarget) {
+      res.status(400).json({ message: "target is required" });
+      return;
+    }
+
+    const normalizedTarget = normalizeVerificationTarget(channel, rawTarget);
+
+    const [user] = await db
+      .select({
+        id: users.id,
+        emailVerifiedAt: users.emailVerifiedAt,
+        phoneVerifiedAt: users.phoneVerifiedAt,
+      })
+      .from(users)
+      .where(
+        channel === "email"
+          ? eq(users.email, normalizedTarget)
+          : eq(users.phone, normalizedTarget),
+      )
+      .limit(1);
+
+    if (!user) {
+      await sleep(250);
+      res.json({ ok: true, cooldownSeconds: 60 });
+      return;
+    }
+
+    await logAudit({
+      actorId: user.id,
+      action: "resend_requested",
+      entity: "user",
+      details: { channel },
+      req,
+    });
+
+    if (
+      (channel === "email" && user.emailVerifiedAt) ||
+      (channel === "sms" && user.phoneVerifiedAt)
+    ) {
+      res.json({ ok: true, cooldownSeconds: 60 });
+      return;
+    }
+
+    try {
+      const verification = await sendVerificationCode({
+        userId: user.id,
+        channel,
+        purpose:
+          body.purpose ??
+          (channel === "email" ? "email_verification" : "phone_verification"),
+        target: normalizedTarget,
+      });
+
+      console.info(`${AUTH_API_LOG_NS} verification:send:success`, {
+        traceId,
+        userId: user.id,
+        channel,
+        ...requestMeta,
+      });
+
+      res.json({
+        ok: true,
+        cooldownSeconds: verification.cooldownSeconds,
+        expiresInSeconds: verification.expiresInSeconds,
+      });
+    } catch (error) {
+      console.warn(`${AUTH_API_LOG_NS} verification:send:failed`, {
+        traceId,
+        userId: user.id,
+        channel,
+        message: getErrorMessage(error),
+      });
+
+      // Generic success response avoids account enumeration.
+      res.json({ ok: true, cooldownSeconds: 60 });
+    }
+  },
+);
+
+export const verifyVerificationCodeHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const body = req.body as {
+      channel: VerificationChannel;
+      target: string;
+      code: string;
+    };
+
+    const normalizedTarget = normalizeVerificationTarget(
+      body.channel,
+      body.target,
+    );
+
+    const result = await verifyVerificationCode({
+      channel: body.channel,
+      target: normalizedTarget,
+      code: body.code,
+    });
+
+    if (!result.valid) {
+      res.status(400).json({
+        verified: false,
+        message: "Invalid or expired verification code.",
+      });
+      return;
+    }
+
+    if (result.userId) {
+      if (body.channel === "email") {
+        await db
+          .update(users)
+          .set({ emailVerifiedAt: new Date() })
+          .where(eq(users.id, result.userId));
+      } else {
+        await db
+          .update(users)
+          .set({ phoneVerifiedAt: new Date() })
+          .where(eq(users.id, result.userId));
+      }
+    }
+
+    res.json({ verified: true });
+  },
+);
+
+export const getAuthPreferences = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
+
+  const [user] = await db
+    .select({
+      email: users.email,
+      phone: users.phone,
+      emailVerifiedAt: users.emailVerifiedAt,
+      phoneVerifiedAt: users.phoneVerifiedAt,
+      loginEmailAlertEnabled: users.loginEmailAlertEnabled,
+      loginSmsAlertEnabled: users.loginSmsAlertEnabled,
+    })
+    .from(users)
+    .where(eq(users.id, req.user.id))
+    .limit(1);
+
+  if (!user) {
+    res.status(404).json({ message: "User not found" });
+    return;
+  }
+
+  res.json({
+    email: user.email,
+    phone: user.phone,
+    emailVerifiedAt: user.emailVerifiedAt,
+    phoneVerifiedAt: user.phoneVerifiedAt,
+    loginEmailAlertEnabled: user.loginEmailAlertEnabled,
+    loginSmsAlertEnabled: user.loginSmsAlertEnabled,
+  });
+});
+
+export const patchAuthPreferences = asyncHandler(
+  async (req: Request, res: Response) => {
+    if (!req.user) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+
+    const body = req.body as {
+      loginEmailAlertEnabled?: boolean;
+      loginSmsAlertEnabled?: boolean;
+    };
+
+    const [user] = await db
+      .select({
+        phone: users.phone,
+        phoneVerifiedAt: users.phoneVerifiedAt,
+      })
+      .from(users)
+      .where(eq(users.id, req.user.id))
+      .limit(1);
+
+    if (!user) {
+      res.status(404).json({ message: "User not found" });
+      return;
+    }
+
+    if (body.loginSmsAlertEnabled === true && (!user.phone || !user.phoneVerifiedAt)) {
+      res.status(400).json({
+        message:
+          "Verify a phone number before enabling SMS login alerts.",
+      });
+      return;
+    }
+
+    await db
+      .update(users)
+      .set({
+        ...(body.loginEmailAlertEnabled !== undefined
+          ? { loginEmailAlertEnabled: body.loginEmailAlertEnabled }
+          : {}),
+        ...(body.loginSmsAlertEnabled !== undefined
+          ? { loginSmsAlertEnabled: body.loginSmsAlertEnabled }
+          : {}),
+      })
+      .where(eq(users.id, req.user.id));
+
+    const [updated] = await db
+      .select({
+        email: users.email,
+        phone: users.phone,
+        emailVerifiedAt: users.emailVerifiedAt,
+        phoneVerifiedAt: users.phoneVerifiedAt,
+        loginEmailAlertEnabled: users.loginEmailAlertEnabled,
+        loginSmsAlertEnabled: users.loginSmsAlertEnabled,
+      })
+      .from(users)
+      .where(eq(users.id, req.user.id))
+      .limit(1);
+
+    res.json(updated);
+  },
+);
 export const me = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user) {
     res.status(401).json({ message: "Unauthorized" });
@@ -609,3 +911,4 @@ export const resetPasswordHandler = asyncHandler(async (req: Request, res: Respo
 
   res.json({ message: "Password updated successfully. You can now log in." });
 });
+

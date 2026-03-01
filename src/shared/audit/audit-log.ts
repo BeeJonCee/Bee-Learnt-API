@@ -22,6 +22,14 @@ export type AuditAction =
   | "auth.login"
   | "auth.logout"
   | "auth.password_reset"
+  | "otp_sent_email"
+  | "otp_sent_sms"
+  | "otp_verified_email"
+  | "otp_verified_phone"
+  | "login_success"
+  | "login_failed"
+  | "login_alert_sent"
+  | "resend_requested"
 
   // User Management
   | "user.create"

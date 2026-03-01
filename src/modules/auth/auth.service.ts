@@ -12,13 +12,14 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db } from "../../core/database/index.js";
 import { roles, users, passwordResetTokens } from "../../core/database/schema/index.js";
 import { env } from "../../config/env.js";
 import { HttpError } from "../../shared/utils/http-error.js";
 import type { BeeLearntRole } from "../../shared/types/auth.js";
+import type { VerificationChannel } from "./auth-verification.service.js";
 import {
   isNeonAuthAvailable,
   authenticateViaNeonAuth,
@@ -28,8 +29,10 @@ import {
   syncToNeonAuthUser,
 } from "../../shared/utils/schema-sync.js";
 import { sendPasswordResetEmail } from "../../shared/email/send-two-factor.js";
+import { isE164Phone, normalizeSAPhone } from "../../shared/utils/phone.js";
 
 type LoginInput = {
+  /** email address or E.164 phone number (+27821234567) */
   email: string;
   password: string;
 };
@@ -38,8 +41,43 @@ type RegisterInput = {
   name: string;
   email: string;
   password: string;
+  phone?: string;
   role: BeeLearntRole;
 };
+
+export type RegisterUserResult = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  role: BeeLearntRole;
+};
+
+type LoginBaseUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: BeeLearntRole;
+  phone: string | null;
+};
+
+type LoginSuccessResult = {
+  requiresVerification: false;
+  token: string;
+  user: LoginBaseUser;
+  alertPreferences: {
+    loginEmailAlertEnabled: boolean;
+    loginSmsAlertEnabled: boolean;
+  };
+};
+
+type LoginVerificationRequiredResult = {
+  requiresVerification: true;
+  user: LoginBaseUser;
+  channels: VerificationChannel[];
+};
+
+export type LoginUserResult = LoginSuccessResult | LoginVerificationRequiredResult;
 
 const AUTH_SERVICE_LOG_NS = "[auth-service]";
 
@@ -62,10 +100,17 @@ function isNeonOptionalSyncError(error: unknown): boolean {
   return !!code && NEON_AUTH_OPTIONAL_MISSING_CODES.has(code);
 }
 
-export async function registerUser(input: RegisterInput) {
+export async function registerUser(input: RegisterInput): Promise<RegisterUserResult> {
   const normalizedEmail = input.email.trim().toLowerCase();
+  const normalizedPhone = input.phone?.trim()
+    ? normalizeSAPhone(input.phone.trim())
+    : null;
   const normalizedRole = normalizeRole(input.role);
   const maskedEmail = maskEmail(normalizedEmail);
+
+  if (normalizedPhone && !isE164Phone(normalizedPhone)) {
+    throw new HttpError("Phone must be E.164 format, e.g. +27821234567", 400);
+  }
 
   console.info(`${AUTH_SERVICE_LOG_NS} register:start`, {
     email: maskedEmail,
@@ -84,6 +129,22 @@ export async function registerUser(input: RegisterInput) {
       existingUserId: existingUser.id,
     });
     throw new HttpError("Email already in use.", 409);
+  }
+
+  if (normalizedPhone) {
+    const [existingPhoneUser] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.phone, normalizedPhone))
+      .limit(1);
+
+    if (existingPhoneUser) {
+      console.warn(`${AUTH_SERVICE_LOG_NS} register:phone-exists`, {
+        email: maskedEmail,
+        existingUserId: existingPhoneUser.id,
+      });
+      throw new HttpError("Phone number already in use.", 409);
+    }
   }
 
   const [roleRow] = await db
@@ -109,6 +170,7 @@ export async function registerUser(input: RegisterInput) {
       id: userId,
       name: input.name.trim(),
       email: normalizedEmail,
+      phone: normalizedPhone,
       passwordHash,
       roleId: roleRow.id,
     })
@@ -116,6 +178,7 @@ export async function registerUser(input: RegisterInput) {
       id: users.id,
       name: users.name,
       email: users.email,
+      phone: users.phone,
     });
 
   // Keep local registration independent from Neon Auth availability.
@@ -164,11 +227,12 @@ export async function registerUser(input: RegisterInput) {
     id: createdUser.id,
     name: createdUser.name,
     email: createdUser.email,
+    phone: createdUser.phone ?? null,
     role: normalizedRole,
   };
 }
 
-export async function loginUser(input: LoginInput) {
+export async function loginUser(input: LoginInput): Promise<LoginUserResult> {
   const maskedEmail = maskEmail(input.email);
   console.info(`${AUTH_SERVICE_LOG_NS} login:start`, { email: maskedEmail });
 
@@ -179,34 +243,66 @@ export async function loginUser(input: LoginInput) {
     throw new HttpError("JWT secret is not configured.", 500);
   }
 
-  // Look up user in beelearnt database
-  const [user] = await db
+  const identifier = input.email.trim().toLowerCase();
+  const [localUser] = await db
     .select({
       id: users.id,
       name: users.name,
       email: users.email,
+      phone: users.phone,
       passwordHash: users.passwordHash,
       role: roles.name,
+      emailVerifiedAt: users.emailVerifiedAt,
+      lastLoginAt: users.lastLoginAt,
+      loginEmailAlertEnabled: users.loginEmailAlertEnabled,
+      loginSmsAlertEnabled: users.loginSmsAlertEnabled,
     })
     .from(users)
     .innerJoin(roles, eq(users.roleId, roles.id))
-    .where(eq(users.email, input.email));
+    .where(or(eq(users.email, identifier), eq(users.phone, identifier)));
 
-  // Path 1: Local auth - user exists with a passwordHash in beelearnt
-  if (user?.passwordHash) {
-    const valid = await bcrypt.compare(input.password, user.passwordHash);
+  const makeVerificationChannels = (phone: string | null): VerificationChannel[] => {
+    return phone ? ["email", "sms"] : ["email"];
+  };
+
+  if (localUser?.passwordHash) {
+    const valid = await bcrypt.compare(input.password, localUser.passwordHash);
     if (!valid) {
       console.warn(`${AUTH_SERVICE_LOG_NS} login:local-password-mismatch`, {
         email: maskedEmail,
-        userId: user.id,
+        userId: localUser.id,
       });
       throw new HttpError("Invalid email or password.", 401);
     }
 
-    const normalizedRole = user.role.toUpperCase() as BeeLearntRole;
+    const normalizedRole = localUser.role.toUpperCase() as BeeLearntRole;
+    const userBase = {
+      id: localUser.id,
+      name: localUser.name,
+      email: localUser.email,
+      role: normalizedRole,
+      phone: localUser.phone ?? null,
+    };
+
+    const requiresEmailVerification =
+      !localUser.emailVerifiedAt &&
+      (env.authEnforceEmailVerification || !localUser.lastLoginAt);
+
+    if (requiresEmailVerification) {
+      return {
+        requiresVerification: true,
+        user: userBase,
+        channels: makeVerificationChannels(localUser.phone ?? null),
+      };
+    }
 
     const token = jwt.sign(
-      { id: user.id, role: normalizedRole, email: user.email, name: user.name },
+      {
+        id: localUser.id,
+        role: normalizedRole,
+        email: localUser.email,
+        name: localUser.name,
+      },
       env.jwtSecret,
       { expiresIn: "7d" },
     );
@@ -214,21 +310,25 @@ export async function loginUser(input: LoginInput) {
     await db
       .update(users)
       .set({ lastLoginAt: new Date() })
-      .where(eq(users.id, user.id));
+      .where(eq(users.id, localUser.id));
 
     console.info(`${AUTH_SERVICE_LOG_NS} login:local-success`, {
       email: maskedEmail,
-      userId: user.id,
+      userId: localUser.id,
       role: normalizedRole,
     });
 
     return {
+      requiresVerification: false,
       token,
-      user: { id: user.id, name: user.name, email: user.email, role: normalizedRole },
+      user: userBase,
+      alertPreferences: {
+        loginEmailAlertEnabled: localUser.loginEmailAlertEnabled,
+        loginSmsAlertEnabled: localUser.loginSmsAlertEnabled,
+      },
     };
   }
 
-  // Path 2: Neon Auth fallback - check neondb.neon_auth.account for credential provider
   if (isNeonAuthAvailable()) {
     console.info(`${AUTH_SERVICE_LOG_NS} login:neon-fallback:start`, {
       email: maskedEmail,
@@ -236,6 +336,37 @@ export async function loginUser(input: LoginInput) {
 
     const neonResult = await authenticateViaNeonAuth(input.email, input.password);
     if (neonResult) {
+      const [syncedUser] = await db
+        .select({
+          id: users.id,
+          phone: users.phone,
+          emailVerifiedAt: users.emailVerifiedAt,
+          lastLoginAt: users.lastLoginAt,
+          loginEmailAlertEnabled: users.loginEmailAlertEnabled,
+          loginSmsAlertEnabled: users.loginSmsAlertEnabled,
+        })
+        .from(users)
+        .where(eq(users.id, neonResult.id))
+        .limit(1);
+
+      const requiresEmailVerification =
+        !syncedUser?.emailVerifiedAt &&
+        (env.authEnforceEmailVerification || !syncedUser?.lastLoginAt);
+
+      if (requiresEmailVerification) {
+        return {
+          requiresVerification: true,
+          user: {
+            id: neonResult.id,
+            name: neonResult.name,
+            email: neonResult.email,
+            role: neonResult.role,
+            phone: syncedUser?.phone ?? null,
+          },
+          channels: makeVerificationChannels(syncedUser?.phone ?? null),
+        };
+      }
+
       const token = jwt.sign(
         {
           id: neonResult.id,
@@ -259,12 +390,18 @@ export async function loginUser(input: LoginInput) {
       });
 
       return {
+        requiresVerification: false,
         token,
         user: {
           id: neonResult.id,
           name: neonResult.name,
           email: neonResult.email,
           role: neonResult.role,
+          phone: syncedUser?.phone ?? null,
+        },
+        alertPreferences: {
+          loginEmailAlertEnabled: syncedUser?.loginEmailAlertEnabled ?? true,
+          loginSmsAlertEnabled: syncedUser?.loginSmsAlertEnabled ?? false,
         },
       };
     }
@@ -404,3 +541,4 @@ export async function resetPassword(token: string, newPassword: string): Promise
 
   console.info(`${RESET_TOKEN_LOG_NS} reset:success`, { userId: resetRecord.userId });
 }
+

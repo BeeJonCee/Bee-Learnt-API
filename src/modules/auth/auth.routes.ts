@@ -3,6 +3,10 @@ import {
   login,
   me,
   updateMe,
+  getAuthPreferences,
+  patchAuthPreferences,
+  sendVerificationCodeHandler,
+  verifyVerificationCodeHandler,
   socialBridge,
   exchangeNeonToken,
   register,
@@ -12,6 +16,9 @@ import {
 import { requireAuth } from "../../core/middleware/auth.js";
 import { validateBody } from "../../core/middleware/validate.js";
 import {
+  authPreferencesUpdateSchema,
+  authVerificationSendSchema,
+  authVerificationVerifySchema,
   loginSchema,
   registerSchema,
   forgotPasswordSchema,
@@ -55,6 +62,23 @@ const authRoutes = Router();
  */
 authRoutes.post("/login", validateBody(loginSchema), login);
 authRoutes.post("/register", validateBody(registerSchema), register);
+authRoutes.post(
+  "/verification/send",
+  validateBody(authVerificationSendSchema),
+  sendVerificationCodeHandler,
+);
+authRoutes.post(
+  "/verification/verify",
+  validateBody(authVerificationVerifySchema),
+  verifyVerificationCodeHandler,
+);
+authRoutes.get("/preferences", requireAuth, getAuthPreferences);
+authRoutes.patch(
+  "/preferences",
+  requireAuth,
+  validateBody(authPreferencesUpdateSchema),
+  patchAuthPreferences,
+);
 
 /**
  * @swagger

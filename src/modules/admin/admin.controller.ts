@@ -2,7 +2,9 @@ import type { Request, Response } from "express";
 import { eq, inArray } from "drizzle-orm";
 import { asyncHandler } from "../../core/middleware/async-handler.js";
 import { db } from "../../core/database/index.js";
-import { modules, neonUsers, roles, subjects, userModuleSelections, users } from "../../core/database/schema/index.js";
+import { modules, roles, subjects, userModuleSelections, users } from "../../core/database/schema/index.js";
+import { db as authDb } from "../../core/database/neon-auth-db.js";
+import { neonAuthUsers } from "../../core/database/neon-auth-schema.js";
 import { getAnalytics, syncUsersToNeonAuth, checkSchemaConsistency } from "./admin.service.js";
 import { getAdminInsights } from "./admin-insights.service.js";
 import { getSystemHealth, getReportStats } from "./admin-system.service.js";
@@ -10,6 +12,12 @@ import { parseUuid } from "../../shared/utils/parse.js";
 import type { BeeLearntRole } from "../../shared/types/auth.js";
 
 const adminRoles = new Set(["ADMIN", "PARENT", "STUDENT", "TUTOR"]);
+const NEON_AUTH_OPTIONAL_MISSING_CODES = new Set(["42P01", "3F000"]);
+
+function isNeonAuthOptionalError(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code;
+  return !!code && NEON_AUTH_OPTIONAL_MISSING_CODES.has(code);
+}
 
 export const analytics = asyncHandler(async (_req: Request, res: Response) => {
   const data = await getAnalytics();
@@ -253,21 +261,48 @@ export const updateUserRole = asyncHandler(async (req: Request, res: Response) =
     })
     .where(eq(users.id, userId));
 
-  // Update Neon Auth user role (sync)
-  await db
-    .update(neonUsers)
-    .set({
-      role: targetRole,
-      updatedAt: new Date(),
-    })
-    .where(eq(neonUsers.id, userId));
+  const neonAuthSync = {
+    synced: false,
+    reason: "Neon Auth database is not configured",
+  };
+
+  if (authDb) {
+    try {
+      const [updatedNeonUser] = await authDb
+        .update(neonAuthUsers)
+        .set({
+          role: targetRole,
+          updatedAt: new Date(),
+        })
+        .where(eq(neonAuthUsers.id, userId))
+        .returning({ id: neonAuthUsers.id });
+
+      if (updatedNeonUser) {
+        neonAuthSync.synced = true;
+        neonAuthSync.reason = "";
+      } else {
+        neonAuthSync.reason = "User not found in Neon Auth";
+      }
+    } catch (error) {
+      if (isNeonAuthOptionalError(error)) {
+        neonAuthSync.reason = "Neon Auth schema/tables are unavailable";
+      } else {
+        throw error;
+      }
+    }
+  }
 
   res.json({
     userId,
     email: userRow.email,
     name: userRow.name,
     role: targetRole,
-    message: "User role updated successfully in both BeeLearnt and Neon Auth",
+    message: neonAuthSync.synced
+      ? "User role updated successfully in BeeLearnt and Neon Auth"
+      : "User role updated successfully in BeeLearnt",
+    neonAuth: neonAuthSync.synced
+      ? { synced: true }
+      : { synced: false, reason: neonAuthSync.reason },
   });
 });
 
@@ -299,16 +334,33 @@ export const getUserDetails = asyncHandler(async (req: Request, res: Response) =
   }
 
   // Get Neon Auth data
-  const [neonUser] = await db
-    .select({
-      emailVerified: neonUsers.emailVerified,
-      banned: neonUsers.banned,
-      banReason: neonUsers.banReason,
-      role: neonUsers.role,
-    })
-    .from(neonUsers)
-    .where(eq(neonUsers.id, userId))
-    .limit(1);
+  let neonUser: {
+    emailVerified: boolean | null;
+    banned: boolean | null;
+    banReason: string | null;
+    role: string | null;
+  } | null = null;
+
+  if (authDb) {
+    try {
+      const [row] = await authDb
+        .select({
+          emailVerified: neonAuthUsers.emailVerified,
+          banned: neonAuthUsers.banned,
+          banReason: neonAuthUsers.banReason,
+          role: neonAuthUsers.role,
+        })
+        .from(neonAuthUsers)
+        .where(eq(neonAuthUsers.id, userId))
+        .limit(1);
+
+      neonUser = row ?? null;
+    } catch (error) {
+      if (!isNeonAuthOptionalError(error)) {
+        throw error;
+      }
+    }
+  }
 
   res.json({
     ...userRow,

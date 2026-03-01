@@ -2,7 +2,8 @@ import { Resend } from "resend";
 import { env } from "../../config/env.js";
 
 const APP_NAME = "BeeLearnt";
-const FROM_EMAIL = env.fromEmail || "noreply@beeintelligence.tech";
+const FROM_EMAIL =
+  env.resendFromEmail || env.fromEmail || "noreply@beeintelligence.tech";
 
 function getResend() {
   if (!env.resendApiKey) {
@@ -96,6 +97,92 @@ export async function sendTwoFactorCodeEmail(input: {
     from: `${APP_NAME} <${FROM_EMAIL}>`,
     to: input.toEmail,
     subject: `${APP_NAME}: ${subjectPrefix}`,
+    text,
+    html,
+  });
+
+  if (error) {
+    throw new Error(`Resend error: ${error.message}`);
+  }
+}
+
+export async function sendVerificationOtpEmail(input: {
+  toEmail: string;
+  code: string;
+  expiresInMinutes: number;
+}): Promise<void> {
+  const resend = getResend();
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6;color:#111827;">
+      <h2 style="margin-bottom:8px;">${APP_NAME} verification code</h2>
+      <p>Enter this code to verify your account:</p>
+      <div style="font-size:30px;font-weight:700;letter-spacing:6px;padding:14px 18px;background:#f3f4f6;border-radius:10px;display:inline-block;">
+        ${input.code}
+      </div>
+      <p style="margin-top:16px;">This code expires in ${input.expiresInMinutes} minutes.</p>
+      <p style="color:#6b7280;">If you did not request this code, ignore this email.</p>
+    </div>
+  `;
+
+  const text = [
+    `${APP_NAME} verification code`,
+    "",
+    "Enter this code to verify your account:",
+    input.code,
+    "",
+    `Code expires in ${input.expiresInMinutes} minutes.`,
+    "If you did not request this code, ignore this email.",
+  ].join("\n");
+
+  const { error } = await resend.emails.send({
+    from: `${APP_NAME} <${FROM_EMAIL}>`,
+    to: input.toEmail,
+    subject: `${APP_NAME}: Verify your email`,
+    text,
+    html,
+  });
+
+  if (error) {
+    throw new Error(`Resend error: ${error.message}`);
+  }
+}
+
+export async function sendLoginAlertEmail(input: {
+  toEmail: string;
+  loginAtIso: string;
+  device: string;
+  location: string;
+}): Promise<void> {
+  const resend = getResend();
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6;color:#111827;">
+      <h2 style="margin-bottom:8px;">New login detected</h2>
+      <p>We detected a sign-in to your ${APP_NAME} account.</p>
+      <ul>
+        <li><strong>Time:</strong> ${input.loginAtIso}</li>
+        <li><strong>Device:</strong> ${input.device}</li>
+        <li><strong>Location:</strong> ${input.location}</li>
+      </ul>
+      <p>If this was not you, reset your password immediately and contact support.</p>
+    </div>
+  `;
+
+  const text = [
+    `${APP_NAME} new login detected`,
+    "",
+    `Time: ${input.loginAtIso}`,
+    `Device: ${input.device}`,
+    `Location: ${input.location}`,
+    "",
+    "If this was not you, reset your password immediately.",
+  ].join("\n");
+
+  const { error } = await resend.emails.send({
+    from: `${APP_NAME} <${FROM_EMAIL}>`,
+    to: input.toEmail,
+    subject: `${APP_NAME}: New login detected`,
     text,
     html,
   });

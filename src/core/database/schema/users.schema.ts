@@ -1,4 +1,5 @@
 import {
+  boolean,
   integer,
   jsonb,
   pgTable,
@@ -29,11 +30,20 @@ export const users = pgTable("users", {
   id: text("id").primaryKey(),
   name: varchar("name", { length: 120 }).notNull(),
   email: varchar("email", { length: 255 }).notNull().unique(),
+  phone: varchar("phone", { length: 30 }).unique(),
   passwordHash: text("password_hash"),
   image: text("image"),
   roleId: integer("role_id").references(() => roles.id).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+  phoneVerifiedAt: timestamp("phone_verified_at", { withTimezone: true }),
+  loginEmailAlertEnabled: boolean("login_email_alert_enabled")
+    .default(true)
+    .notNull(),
+  loginSmsAlertEnabled: boolean("login_sms_alert_enabled")
+    .default(false)
+    .notNull(),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
 });
 
@@ -43,6 +53,21 @@ export const emailVerificationCodes = pgTable("email_verification_codes", {
   email: text("email").notNull(),
   codeHash: text("code_hash").notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Unified verification table for email + SMS OTP flows.
+export const authVerificationCodes = pgTable("auth_verification_codes", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").references(() => users.id),
+  channel: varchar("channel", { length: 16 }).notNull(), // "email" | "sms"
+  purpose: varchar("purpose", { length: 40 }).notNull(), // "email_verification" | "phone_verification"
+  target: text("target").notNull(), // normalized email or E.164 phone
+  codeHash: text("code_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  lastSentAt: timestamp("last_sent_at", { withTimezone: true }).defaultNow().notNull(),
   consumedAt: timestamp("consumed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

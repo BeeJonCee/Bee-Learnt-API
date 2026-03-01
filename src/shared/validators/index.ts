@@ -98,17 +98,47 @@ export const questionBankBulkImportSchema = z.object({
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 export const loginSchema = z.object({
-  email: z.string().email(),
+  // Accept email address or E.164 phone number (+27821234567)
+  email: z.string().min(1),
   password: z.string().min(6),
-  twoFactorCode: z.string().optional(),
 });
 
 export const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
-  name: z.string().min(1).max(120).optional(),
-  desiredRole: z.enum(["STUDENT", "PARENT", "TUTOR"]).optional(),
+  name: z.string().min(1).max(120),
+  phone: z
+    .string()
+    .regex(/^\+\d{7,15}$/, "Phone must be E.164 format, e.g. +27821234567")
+    .optional(),
+  role: z.enum(["STUDENT", "PARENT"]),
 });
+
+export const authVerificationSendSchema = z.object({
+  channel: z.enum(["email", "sms"]),
+  target: z.string().min(1),
+  purpose: z.enum(["email_verification", "phone_verification"]).optional(),
+});
+
+export const authVerificationVerifySchema = z.object({
+  channel: z.enum(["email", "sms"]),
+  target: z.string().min(1),
+  code: z.string().regex(/^\d{6}$/, "Code must be 6 digits"),
+});
+
+export const authPreferencesUpdateSchema = z
+  .object({
+    loginEmailAlertEnabled: z.boolean().optional(),
+    loginSmsAlertEnabled: z.boolean().optional(),
+  })
+  .refine(
+    (value) =>
+      value.loginEmailAlertEnabled !== undefined ||
+      value.loginSmsAlertEnabled !== undefined,
+    {
+      message: "At least one preference field must be provided",
+    },
+  );
 
 export const forgotPasswordSchema = z.object({
   email: z.string().email(),
@@ -430,20 +460,60 @@ export const lessonNoteQuerySchema = z.object({
 
 // ─── Timetable ────────────────────────────────────────────────────────────────
 
-const dayOfWeek = z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]);
+const dayOfWeek = z.enum([
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+]);
 
-export const timetableEntryCreateSchema = z.object({
+const timetableDayInputSchema = z.preprocess((value) => {
+  if (typeof value === "string") {
+    return value.trim().toLowerCase();
+  }
+  return value;
+}, dayOfWeek);
+
+const timetableEntryPayloadSchema = z.object({
   title: z.string().min(1).max(120),
-  day: dayOfWeek,
+  dayOfWeek: timetableDayInputSchema.optional(),
+  // Backward compatibility for older clients that still send `day`.
+  day: timetableDayInputSchema.optional(),
   startTime: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:MM"),
   endTime: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:MM"),
-  description: z.string().optional(),
-  subject: z.string().optional(),
+  subjectId: z.coerce.number().int().positive().optional(),
+  location: z.string().max(120).optional(),
   isRecurring: z.boolean().default(true),
   color: z.string().optional(),
 });
 
-export const timetableEntryUpdateSchema = timetableEntryCreateSchema.partial();
+export const timetableEntryCreateSchema = timetableEntryPayloadSchema
+  .superRefine((data, ctx) => {
+    if (!data.dayOfWeek && !data.day) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["dayOfWeek"],
+        message: "Required",
+      });
+    }
+  })
+  .transform((data) => {
+    const { day, dayOfWeek, ...rest } = data;
+    return { ...rest, dayOfWeek: dayOfWeek ?? day };
+  });
+
+export const timetableEntryUpdateSchema = timetableEntryPayloadSchema
+  .partial()
+  .transform((data) => {
+    const { day, dayOfWeek, ...rest } = data;
+    if (dayOfWeek !== undefined || day !== undefined) {
+      return { ...rest, dayOfWeek: dayOfWeek ?? day };
+    }
+    return rest;
+  });
 
 // ─── Messaging ────────────────────────────────────────────────────────────────
 
