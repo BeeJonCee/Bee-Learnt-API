@@ -145,6 +145,39 @@ export async function migrate() {
     ON email_verification_codes(email);
   `);
 
+  // Unified verification/OTP table used by /api/auth/verification/* endpoints.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS auth_verification_codes (
+      id serial PRIMARY KEY,
+      user_id uuid REFERENCES users(id),
+      channel varchar(16) NOT NULL,
+      purpose varchar(40) NOT NULL,
+      target text NOT NULL,
+      code_hash text NOT NULL,
+      expires_at timestamptz NOT NULL,
+      attempts integer NOT NULL DEFAULT 0,
+      last_sent_at timestamptz NOT NULL DEFAULT now(),
+      consumed_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_auth_verification_codes_channel_target_created
+    ON auth_verification_codes(channel, target, created_at DESC);
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_auth_verification_codes_user_id
+    ON auth_verification_codes(user_id);
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_auth_verification_codes_active
+    ON auth_verification_codes(channel, target, expires_at)
+    WHERE consumed_at IS NULL;
+  `);
+
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS parent_student_links (
       id serial PRIMARY KEY,

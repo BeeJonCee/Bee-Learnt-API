@@ -28,6 +28,7 @@ import type { BeeLearntRole } from "../../shared/types/auth.js";
 import { logAudit } from "../../shared/audit/audit-log.js";
 
 const AUTH_API_LOG_NS = "[auth-api]";
+const isDev = env.nodeEnv !== "production";
 
 const extractString = (value: unknown): string | null =>
   typeof value === "string" && value.trim().length > 0 ? value : null;
@@ -429,7 +430,21 @@ export const sendVerificationCodeHandler = asyncHandler(
         message: getErrorMessage(error),
       });
 
-      // Generic success response avoids account enumeration.
+      if (isDev) {
+        const status =
+          (error as { statusCode?: number; status?: number } | null)?.statusCode ??
+          (error as { statusCode?: number; status?: number } | null)?.status ??
+          503;
+
+        res.status(status).json({
+          ok: false,
+          message: getErrorMessage(error),
+          channel,
+        });
+        return;
+      }
+
+      // Keep production behavior generic to avoid account enumeration.
       res.json({ ok: true, cooldownSeconds: 60 });
     }
   },
