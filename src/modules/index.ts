@@ -2,7 +2,7 @@ import { Router } from "express";
 import { adminRoutes, analyticsRoutes, educationRoutes } from "./admin/index.js";
 import { aiRoutes, externalRoutes, translateRoutes } from "./ai/index.js";
 import { assessmentsRoutes, attemptsRoutes } from "./assessments/index.js";
-import { authRoutes, authExchangeRoutes } from "./auth/index.js";
+import { authRoutes } from "./auth/index.js";
 import { collaborationRoutes, messagingRoutes } from "./collaboration/index.js";
 import {
   assignmentsRoutes,
@@ -41,7 +41,6 @@ import { accessibilityRoutes, onboardingRoutes, preferencesRoutes } from "./user
 const router = Router();
 
 router.use("/auth", authRoutes);
-router.use("/auth", authExchangeRoutes);
 router.use("/onboarding", onboardingRoutes);
 router.use("/user-modules", userModulesRoutes);
 router.use("/subjects", subjectsRoutes);
