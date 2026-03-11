@@ -61,6 +61,9 @@ export * from "./submissions.schema.js";
 // Subject Resources (Depends on content + curriculum)
 export * from "./subject-resources.schema.js";
 
+// Education Assets (Depends on content + curriculum + NSC/resources references)
+export * from "./education-assets.schema.js";
+
 // Relations (Drizzle relational query API)
 export * from "./relations.js";
 

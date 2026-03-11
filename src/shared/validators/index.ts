@@ -388,7 +388,7 @@ export const nscPaperUpdateSchema = nscPaperCreateSchema.partial();
 
 export const nscPaperDocumentCreateSchema = z.object({
   title: z.string().min(1).max(200),
-  fileUrl: z.string().url(),
+  fileUrl: z.string().min(1),
   docType: z.enum([
     "question_paper",
     "memorandum",

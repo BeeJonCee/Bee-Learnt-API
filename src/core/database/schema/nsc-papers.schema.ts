@@ -11,6 +11,7 @@ import {
 import { examSessionEnum, paperDocTypeEnum } from "./enums.js";
 import { subjects } from "./content.schema.js";
 import { grades, topics } from "./curriculum.schema.js";
+import { educationAssets } from "./education-assets.schema.js";
 
 /**
  * NSC Past Papers Schema
@@ -44,6 +45,7 @@ export const nscPaperDocuments = pgTable("nsc_paper_documents", {
   title: varchar("title", { length: 300 }).notNull(),
   fileUrl: text("file_url").notNull(),
   filePath: text("file_path"),
+  educationAssetId: integer("education_asset_id").references(() => educationAssets.id),
   fileSize: integer("file_size"),
   mimeType: varchar("mime_type", { length: 60 }),
   language: varchar("language", { length: 20 }).default("English").notNull(),

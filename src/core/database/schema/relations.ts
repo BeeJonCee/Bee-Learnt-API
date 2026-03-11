@@ -14,6 +14,11 @@ import { subjects, modules, lessons } from "./content.schema.js";
 
 // Curriculum
 import { curricula, grades, topics } from "./curriculum.schema.js";
+import {
+  educationChapters,
+  educationAssets,
+  educationAssetLinks,
+} from "./education-assets.schema.js";
 
 // Legacy Quizzes
 import {
@@ -38,6 +43,7 @@ import {
   nscPaperDocuments,
   nscPaperQuestions,
 } from "./nsc-papers.schema.js";
+import { subjectResources } from "./subject-resources.schema.js";
 
 // Question Bank
 import { questionBankItems } from "./questions.schema.js";
@@ -248,6 +254,71 @@ export const topicsRelations = relations(topics, ({ one }) => ({
   }),
 }));
 
+// ── EDUCATION CHAPTERS ──────────────────────
+
+export const educationChaptersRelations = relations(
+  educationChapters,
+  ({ one, many }) => ({
+    subject: one(subjects, {
+      fields: [educationChapters.subjectId],
+      references: [subjects.id],
+    }),
+    grade: one(grades, {
+      fields: [educationChapters.gradeId],
+      references: [grades.id],
+    }),
+    assets: many(educationAssets),
+    links: many(educationAssetLinks),
+  }),
+);
+
+// ── EDUCATION ASSETS ────────────────────────
+
+export const educationAssetsRelations = relations(
+  educationAssets,
+  ({ one, many }) => ({
+    subject: one(subjects, {
+      fields: [educationAssets.subjectId],
+      references: [subjects.id],
+    }),
+    grade: one(grades, {
+      fields: [educationAssets.gradeId],
+      references: [grades.id],
+    }),
+    chapter: one(educationChapters, {
+      fields: [educationAssets.chapterId],
+      references: [educationChapters.id],
+    }),
+    links: many(educationAssetLinks),
+    nscPaperDocuments: many(nscPaperDocuments),
+    subjectResources: many(subjectResources),
+  }),
+);
+
+// ── EDUCATION ASSET LINKS ───────────────────
+
+export const educationAssetLinksRelations = relations(
+  educationAssetLinks,
+  ({ one }) => ({
+    asset: one(educationAssets, {
+      fields: [educationAssetLinks.assetId],
+      references: [educationAssets.id],
+    }),
+    chapter: one(educationChapters, {
+      fields: [educationAssetLinks.chapterId],
+      references: [educationChapters.id],
+    }),
+    module: one(modules, {
+      fields: [educationAssetLinks.moduleId],
+      references: [modules.id],
+    }),
+    lesson: one(lessons, {
+      fields: [educationAssetLinks.lessonId],
+      references: [lessons.id],
+    }),
+  }),
+);
+
 // ── QUESTION BANK ITEMS ─────────────────────
 
 export const questionBankItemsRelations = relations(
@@ -374,6 +445,10 @@ export const nscPaperDocumentsRelations = relations(
       fields: [nscPaperDocuments.nscPaperId],
       references: [nscPapers.id],
     }),
+    educationAsset: one(educationAssets, {
+      fields: [nscPaperDocuments.educationAssetId],
+      references: [educationAssets.id],
+    }),
   }),
 );
 
@@ -383,6 +458,26 @@ export const nscPaperQuestionsRelations = relations(
     paper: one(nscPapers, {
       fields: [nscPaperQuestions.nscPaperId],
       references: [nscPapers.id],
+    }),
+  }),
+);
+
+// ── SUBJECT RESOURCES ───────────────────────
+
+export const subjectResourcesRelations = relations(
+  subjectResources,
+  ({ one }) => ({
+    subject: one(subjects, {
+      fields: [subjectResources.subjectId],
+      references: [subjects.id],
+    }),
+    grade: one(grades, {
+      fields: [subjectResources.gradeId],
+      references: [grades.id],
+    }),
+    educationAsset: one(educationAssets, {
+      fields: [subjectResources.educationAssetId],
+      references: [educationAssets.id],
     }),
   }),
 );

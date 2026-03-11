@@ -2,7 +2,12 @@ import type { Request, Response } from "express";
 import * as path from "path";
 import { asyncHandler } from "../../core/middleware/async-handler.js";
 import { parseNumber } from "../../shared/utils/parse.js";
-import { getNscDocumentFile, getSubjectResourceFile } from "../curriculum/education.service.js";
+import {
+  getEducationAssetFile,
+  getNscDocumentFile,
+  getSubjectResourceFile,
+  listEducationAssets,
+} from "../curriculum/education.service.js";
 
 export const downloadNscDocument = asyncHandler(async (req: Request, res: Response) => {
   const documentId = parseNumber(req.params.documentId as string);
@@ -37,6 +42,45 @@ export const downloadSubjectResource = asyncHandler(async (req: Request, res: Re
   const file = await getSubjectResourceFile(resourceId);
   if (!file) {
     res.status(404).json({ message: "Resource not found" });
+    return;
+  }
+
+  const ext = path.extname(file.absolutePath);
+  const safeFileName = file.fileName.endsWith(ext)
+    ? file.fileName
+    : `${file.fileName}${ext}`;
+
+  res.setHeader("Content-Type", file.mimeType);
+  res.setHeader("Content-Disposition", `inline; filename="${safeFileName}"`);
+  res.sendFile(file.absolutePath);
+});
+
+export const listEducationAssetsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const subjectId = parseNumber(req.query.subjectId as string);
+  const gradeId = parseNumber(req.query.gradeId as string);
+  const category = typeof req.query.category === "string" ? req.query.category : undefined;
+
+  const assets = await listEducationAssets({
+    subjectId: subjectId || undefined,
+    gradeId: gradeId || undefined,
+    category:
+      category === "core_content" || category === "assessment" || category === "supporting"
+        ? category
+        : undefined,
+  });
+  res.json(assets);
+});
+
+export const downloadEducationAsset = asyncHandler(async (req: Request, res: Response) => {
+  const assetId = parseNumber(req.params.assetId as string);
+  if (!assetId) {
+    res.status(400).json({ message: "Invalid asset id" });
+    return;
+  }
+
+  const file = await getEducationAssetFile(assetId);
+  if (!file) {
+    res.status(404).json({ message: "Education asset not found" });
     return;
   }
 

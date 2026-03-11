@@ -9,6 +9,7 @@ import {
 import { subjectResourceTypeEnum } from "./enums.js";
 import { subjects } from "./content.schema.js";
 import { grades } from "./curriculum.schema.js";
+import { educationAssets } from "./education-assets.schema.js";
 
 /**
  * Subject Resources Schema
@@ -25,6 +26,7 @@ export const subjectResources = pgTable("subject_resources", {
   type: subjectResourceTypeEnum("type").notNull(),
   fileUrl: text("file_url").notNull(),
   filePath: text("file_path"),
+  educationAssetId: integer("education_asset_id").references(() => educationAssets.id),
   fileSize: integer("file_size"),
   mimeType: varchar("mime_type", { length: 60 }),
   language: varchar("language", { length: 20 }).default("English").notNull(),

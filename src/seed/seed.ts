@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "../core/database/index.js";
 import {
   announcements,
@@ -8,7 +8,9 @@ import {
   assessmentSections,
   assessments,
   badges,
+  educationChapters,
   events,
+  grades,
   questionBankItems,
   lessons,
   moduleChecklistItems,
@@ -262,6 +264,103 @@ async function ensureBadges() {
         criteria: seed.criteria,
       });
     }
+  }
+}
+
+async function ensureEducationChapters() {
+  const [itRow] = await db.select().from(subjects).where(eq(subjects.name, "Information Technology")).limit(1);
+  if (!itRow) return;
+
+  const gradeRows = await db
+    .select({ id: grades.id, level: grades.level })
+    .from(grades)
+    .where(sql`${grades.level} IN (10, 11, 12)`);
+
+  const gradeIdByLevel = new Map(gradeRows.map((row) => [row.level, row.id]));
+  if (!gradeIdByLevel.size) return;
+
+  const chapters = [
+    {
+      gradeLevel: 10,
+      chapterNumber: 1,
+      title: "Basic Concepts of Computing",
+      summary: "General computer model, hardware/software, computer types, and IPO fundamentals.",
+      order: 1,
+    },
+    {
+      gradeLevel: 10,
+      chapterNumber: 2,
+      title: "Data Representation, Storage and Social Implications",
+      summary: "Data-information-knowledge, number systems, file handling basics, and digital ethics.",
+      order: 2,
+    },
+    {
+      gradeLevel: 11,
+      chapterNumber: 1,
+      title: "Hardware",
+      summary: "Motherboard architecture, memory/cache, and performance optimization.",
+      order: 1,
+    },
+    {
+      gradeLevel: 11,
+      chapterNumber: 2,
+      title: "Software",
+      summary: "OS types, compiler/interpreter flow, processing models, and virtualization.",
+      order: 2,
+    },
+    {
+      gradeLevel: 12,
+      chapterNumber: 1,
+      title: "Database Management",
+      summary: "Data collection, warehousing, mining, and data-quality controls.",
+      order: 1,
+    },
+    {
+      gradeLevel: 12,
+      chapterNumber: 2,
+      title: "Database Design Concepts",
+      summary: "Good database characteristics, anomalies, normalization, and key structures.",
+      order: 2,
+    },
+  ] as const;
+
+  for (const chapter of chapters) {
+    const gradeId = gradeIdByLevel.get(chapter.gradeLevel);
+    if (!gradeId) continue;
+
+    const [existing] = await db
+      .select({ id: educationChapters.id })
+      .from(educationChapters)
+      .where(
+        and(
+          eq(educationChapters.subjectId, itRow.id),
+          eq(educationChapters.gradeId, gradeId),
+          eq(educationChapters.chapterNumber, chapter.chapterNumber),
+        ),
+      )
+      .limit(1);
+
+    if (existing) {
+      await db
+        .update(educationChapters)
+        .set({
+          title: chapter.title,
+          summary: chapter.summary,
+          order: chapter.order,
+          updatedAt: new Date(),
+        })
+        .where(eq(educationChapters.id, existing.id));
+      continue;
+    }
+
+    await db.insert(educationChapters).values({
+      subjectId: itRow.id,
+      gradeId,
+      chapterNumber: chapter.chapterNumber,
+      title: chapter.title,
+      summary: chapter.summary,
+      order: chapter.order,
+    });
   }
 }
 
@@ -624,6 +723,7 @@ export async function seed() {
   await seedAnnouncementsAndEvents();
   await seedSubject(itSubject, itModules);
   await seedSubject(mathSubject, mathModules);
+  await ensureEducationChapters();
   await seedAssignmentsAndChecklists();
   await seedQuestionBankAndAssessmentsFromQuizzes();
 }

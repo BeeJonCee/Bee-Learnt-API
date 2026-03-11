@@ -187,3 +187,37 @@ export const subjectResourceTypeEnum = pgEnum("subject_resource_type", [
   "workbook",
   "tutoring_guide",
 ]);
+
+// ── EDUCATION ASSETS ────────────────────────
+export const educationAssetKindEnum = pgEnum("education_asset_kind", [
+  "teacher_guide",
+  "theory_chapter",
+  "practical_guide",
+  "caps_document",
+  "past_paper",
+  "memorandum",
+  "marking_guideline",
+  "answer_book",
+  "data_files",
+  "workbook",
+  "revision_guide",
+  "tutoring_guide",
+  "other",
+]);
+
+export const educationAssetCategoryEnum = pgEnum("education_asset_category", [
+  "core_content",
+  "assessment",
+  "supporting",
+]);
+
+export const educationAssetLinkRoleEnum = pgEnum("education_asset_link_role", [
+  "teacher_guide",
+  "theory_doc",
+  "practical_doc",
+  "worksheet",
+  "past_paper",
+  "memo",
+  "data_files",
+  "reference",
+]);

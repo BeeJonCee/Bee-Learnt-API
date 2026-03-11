@@ -1,5 +1,10 @@
 import { Router } from "express";
-import { downloadNscDocument, downloadSubjectResource } from "./education.controller.js";
+import {
+  downloadEducationAsset,
+  downloadNscDocument,
+  downloadSubjectResource,
+  listEducationAssetsHandler,
+} from "./education.controller.js";
 import { requireAuth } from "../../core/middleware/auth.js";
 
 const educationRoutes = Router();
@@ -54,5 +59,8 @@ educationRoutes.get("/nsc-documents/:documentId/download", requireAuth, download
  *         description: Resource not found
  */
 educationRoutes.get("/resources/:resourceId/download", requireAuth, downloadSubjectResource);
+
+educationRoutes.get("/assets", requireAuth, listEducationAssetsHandler);
+educationRoutes.get("/assets/:assetId/download", requireAuth, downloadEducationAsset);
 
 export { educationRoutes };

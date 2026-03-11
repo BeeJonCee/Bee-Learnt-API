@@ -4,6 +4,12 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 import { sql } from "drizzle-orm";
 import { db } from "../core/database/index.js";
+import {
+  deriveSourceRelPath,
+  docTypeToAssetCategory,
+  docTypeToAssetKind,
+  upsertEducationAsset,
+} from "./education-assets.js";
 
 /**
  * NSC Papers Seeding Script
@@ -500,17 +506,27 @@ async function ensureNscPaper(
 
 async function ensureNscPaperDocument(
   nscPaperId: number,
+  subjectId: number,
+  gradeId: number,
+  year: number,
+  session: string,
+  paperNumber: number,
   docType: string,
   title: string,
   fileUrl: string,
   filePath: string,
   language: string,
 ): Promise<void> {
-  const existing = await db.execute<{ id: number }>(sql`
-    SELECT id FROM nsc_paper_documents
+  const sourceRelPath = deriveSourceRelPath({
+    educationFolder: EDUCATION_FOLDER,
+    filePath,
+    fileUrl,
+  });
+
+  const existing = await db.execute<{ id: number; education_asset_id: number | null }>(sql`
+    SELECT id, education_asset_id FROM nsc_paper_documents
     WHERE nsc_paper_id = ${nscPaperId} AND file_path = ${filePath}
   `);
-  if (existing.rows[0]) return;
 
   let fileSize: number | null = null;
   try { fileSize = fs.statSync(filePath).size; } catch { /* inaccessible */ }
@@ -524,17 +540,56 @@ async function ensureNscPaperDocument(
     ".exe":  "application/x-msdownload",
   };
 
+  const mimeType = MIME_TYPES[ext] ?? "application/octet-stream";
+  const educationAssetId =
+    sourceRelPath === null
+      ? null
+      : await upsertEducationAsset({
+          subjectId,
+          gradeId,
+          kind: docTypeToAssetKind(docType),
+          category: docTypeToAssetCategory(docType),
+          title,
+          sourceRelPath,
+          sourceAbsPath: filePath,
+          mimeType,
+          fileSize,
+          language,
+          year,
+          session,
+          paperNumber,
+          isAvailable: fileSize !== null,
+          metadata: {
+            source: "seed-nsc-papers",
+            docType,
+          },
+        });
+
+  if (existing.rows[0]) {
+    await db.execute(sql`
+      UPDATE nsc_paper_documents
+      SET
+        file_url = ${fileUrl},
+        file_size = ${fileSize},
+        mime_type = ${mimeType},
+        education_asset_id = COALESCE(${educationAssetId}, education_asset_id)
+      WHERE id = ${existing.rows[0].id}
+    `);
+    return;
+  }
+
   await db.execute(sql`
     INSERT INTO nsc_paper_documents
-      (nsc_paper_id, doc_type, title, file_url, file_path, file_size, mime_type, language)
+      (nsc_paper_id, doc_type, title, file_url, file_path, education_asset_id, file_size, mime_type, language)
     VALUES (
       ${nscPaperId},
       ${docType}::paper_doc_type,
       ${title},
       ${fileUrl},
       ${filePath},
+      ${educationAssetId},
       ${fileSize},
-      ${MIME_TYPES[ext] ?? "application/octet-stream"},
+      ${mimeType},
       ${language}
     )
   `);
@@ -595,7 +650,8 @@ async function seedSamplePapers(curriculumId: number) {
 
     for (const doc of paper.documents) {
       await ensureNscPaperDocument(
-        nscPaperId, doc.docType, doc.title,
+        nscPaperId, subjectId, gradeId, paper.year, paper.session, paper.paperNumber,
+        doc.docType, doc.title,
         doc.fileUrl, doc.filePath, doc.language ?? paper.language,
       );
       documentsCount++;
@@ -673,7 +729,8 @@ async function seedFromEducationFolder(curriculumId: number) {
         const title = buildTitle(file);
 
         await ensureNscPaperDocument(
-          nscPaperId, file.docType, title,
+          nscPaperId, subjectId, gradeId, sample.year, sample.session, sample.paperNumber,
+          file.docType, title,
           relativeUrl, file.filePath, file.language,
         );
         stats.documents++;

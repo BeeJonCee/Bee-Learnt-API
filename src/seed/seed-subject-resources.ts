@@ -4,6 +4,12 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 import { sql } from "drizzle-orm";
 import { db } from "../core/database/index.js";
+import {
+  deriveSourceRelPath,
+  resourceTypeToAssetCategory,
+  resourceTypeToAssetKind,
+  upsertEducationAsset,
+} from "./education-assets.js";
 
 /**
  * Subject Resources Seeding Script
@@ -358,12 +364,45 @@ async function seedSubjectResources() {
       .join("/");
     const filePath = absolutePath.replace(/\\/g, "/");
 
+    const sourceRelPath = deriveSourceRelPath({
+      educationFolder: EDUCATION_FOLDER,
+      filePath,
+      fileUrl,
+    });
+    const educationAssetId =
+      sourceRelPath === null
+        ? null
+        : await upsertEducationAsset({
+            subjectId,
+            gradeId,
+            kind: resourceTypeToAssetKind(entry.type),
+            category: resourceTypeToAssetCategory(entry.type),
+            title: entry.title,
+            sourceRelPath,
+            sourceAbsPath: filePath,
+            mimeType,
+            fileSize,
+            language: "English",
+            isAvailable: true,
+            metadata: {
+              source: "seed-subject-resources",
+              resourceType: entry.type,
+            },
+          });
+
     // Check if resource already exists (by file_path)
-    const existing = await db.execute<{ id: number }>(sql`
-      SELECT id FROM subject_resources WHERE file_path = ${filePath}
+    const existing = await db.execute<{ id: number; education_asset_id: number | null }>(sql`
+      SELECT id, education_asset_id FROM subject_resources WHERE file_path = ${filePath}
     `);
 
     if (existing.rows[0]) {
+      if (educationAssetId && existing.rows[0].education_asset_id !== educationAssetId) {
+        await db.execute(sql`
+          UPDATE subject_resources
+          SET education_asset_id = ${educationAssetId}
+          WHERE id = ${existing.rows[0].id}
+        `);
+      }
       console.log(`  EXISTS: ${entry.title} (id: ${existing.rows[0].id})`);
       stats.skipped++;
 
@@ -376,7 +415,7 @@ async function seedSubjectResources() {
 
     // Insert resource
     const inserted = await db.execute<{ id: number }>(sql`
-      INSERT INTO subject_resources (subject_id, grade_id, title, type, file_url, file_path, file_size, mime_type, language, description)
+      INSERT INTO subject_resources (subject_id, grade_id, title, type, file_url, file_path, education_asset_id, file_size, mime_type, language, description)
       VALUES (
         ${subjectId},
         ${gradeId},
@@ -384,6 +423,7 @@ async function seedSubjectResources() {
         ${entry.type}::subject_resource_type,
         ${fileUrl},
         ${filePath},
+        ${educationAssetId},
         ${fileSize},
         ${mimeType},
         'English',

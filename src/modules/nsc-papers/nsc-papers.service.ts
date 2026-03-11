@@ -1,4 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
+import * as fs from "fs";
+import * as path from "path";
+import { fileURLToPath } from "url";
 import { db } from "../../core/database/index.js";
 import {
   nscPapers,
@@ -12,6 +15,26 @@ import {
   assessmentSections,
   assessmentQuestions,
 } from "../../core/database/schema/index.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const EDUCATION_FOLDER = path.resolve(__dirname, "../../Education");
+
+function resolveEducationFilePath(filePath: string | null | undefined): string | null {
+  if (!filePath) return null;
+  if (path.isAbsolute(filePath)) return filePath;
+  return path.join(EDUCATION_FOLDER, filePath);
+}
+
+function hasEducationFile(filePath: string | null | undefined): boolean {
+  const resolved = resolveEducationFilePath(filePath);
+  if (!resolved) return false;
+  return fs.existsSync(resolved);
+}
+
+function nscDocumentDownloadUrl(documentId: number): string {
+  return `/api/education/nsc-documents/${documentId}/download`;
+}
 
 export type ExamSession =
   | "november"
@@ -171,11 +194,22 @@ export async function getPaperWithDocuments(id: number) {
   const paper = await getPaperById(id);
   if (!paper) return null;
 
-  const documents = await db
+  const rows = await db
     .select()
     .from(nscPaperDocuments)
     .where(eq(nscPaperDocuments.nscPaperId, id))
     .orderBy(nscPaperDocuments.docType);
+
+  const documents = rows.map((doc) => {
+    const downloadUrl = nscDocumentDownloadUrl(doc.id);
+    return {
+      ...doc,
+      fileUrl: downloadUrl,
+      legacyFileUrl: doc.fileUrl,
+      downloadUrl,
+      isAvailable: hasEducationFile(doc.filePath),
+    };
+  });
 
   return { ...paper, documents };
 }
@@ -299,11 +333,22 @@ type CreateDocumentInput = {
 };
 
 export async function listDocuments(nscPaperId: number) {
-  return db
+  const rows = await db
     .select()
     .from(nscPaperDocuments)
     .where(eq(nscPaperDocuments.nscPaperId, nscPaperId))
     .orderBy(nscPaperDocuments.docType);
+
+  return rows.map((doc) => {
+    const downloadUrl = nscDocumentDownloadUrl(doc.id);
+    return {
+      ...doc,
+      fileUrl: downloadUrl,
+      legacyFileUrl: doc.fileUrl,
+      downloadUrl,
+      isAvailable: hasEducationFile(doc.filePath),
+    };
+  });
 }
 
 export async function getDocumentById(id: number) {
